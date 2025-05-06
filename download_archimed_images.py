@@ -18,6 +18,10 @@ import pydicom
 from PIL import Image
 from tqdm import tqdm
 import ArchiMedConnector.A3_Connector as A3_Conn
+import urllib3
+
+# Suppress InsecureRequestWarning from urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ANSI escape codes for colored output
 ANSI = {
@@ -145,32 +149,50 @@ class ArchiMedDownloader:
         
         metadata_list = []
         
-        for file_id in file_ids:
-            file_id = str(file_id)
-            subfolder_path = os.path.join(self.download_path, file_id)
-            dicom_file_path = os.path.join(subfolder_path, f"{file_id}.dcm")
+        # Suppress all warnings during processing
+        with warnings.catch_warnings():
+            # Suppress specific warnings about character sets
+            warnings.filterwarnings("ignore", category=UserWarning, 
+                                  message="Incorrect value for Specific Character Set.*")
+            # Suppress InsecureRequestWarning
+            warnings.filterwarnings("ignore", category=Warning, 
+                                  message="Unverified HTTPS request.*")
+            # Suppress pydicom DeprecationWarnings
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
             
-            try:
-                if os.path.exists(dicom_file_path):
-                    dicom_data = pydicom.dcmread(dicom_file_path)
-                    metadata = {'FileID': file_id}
-                    
-                    for attr in dir(dicom_data):
-                        # Skip internal/private attributes and PixelData
-                        if attr.startswith('_') or attr == 'PixelData':
-                            continue
-                        try:
-                            value = getattr(dicom_data, attr)
-                            if not callable(value) and not isinstance(value, pydicom.sequence.Sequence):
-                                metadata[attr] = str(value)
-                        except Exception as e:
-                            metadata[attr] = f"Error: {str(e)}"
-                    
-                    metadata_list.append(metadata)
-                else:
-                    print(f"{ANSI['R']}DICOM file not found: {dicom_file_path}{ANSI['W']}")
-            except Exception as e:
-                print(f"{ANSI['R']}Error processing {file_id}: {str(e)}{ANSI['W']}")
+            for file_id in file_ids:
+                file_id = str(file_id)
+                subfolder_path = os.path.join(self.download_path, file_id)
+                dicom_file_path = os.path.join(subfolder_path, f"{file_id}.dcm")
+                
+                try:
+                    if os.path.exists(dicom_file_path):
+                        # Read DICOM file
+                        dicom_data = pydicom.dcmread(dicom_file_path)
+                        
+                        # Preemptively fix the character set before accessing other attributes
+                        if hasattr(dicom_data, 'SpecificCharacterSet'):
+                            if dicom_data.SpecificCharacterSet == 'ISO_2022_IR_6':
+                                dicom_data.SpecificCharacterSet = 'ISO 2022 IR 6'
+                        
+                        metadata = {'FileID': file_id}
+                        
+                        for attr in dir(dicom_data):
+                            # Skip internal/private attributes and PixelData
+                            if attr.startswith('_') or attr == 'PixelData':
+                                continue
+                            try:
+                                value = getattr(dicom_data, attr)
+                                if not callable(value) and not isinstance(value, pydicom.sequence.Sequence):
+                                    metadata[attr] = str(value)
+                            except Exception as e:
+                                metadata[attr] = f"Error: {str(e)}"
+                        
+                        metadata_list.append(metadata)
+                    else:
+                        print(f"{ANSI['R']}DICOM file not found: {dicom_file_path}{ANSI['W']}")
+                except Exception as e:
+                    print(f"{ANSI['R']}Error processing {file_id}: {str(e)}{ANSI['W']}")
         
         if metadata_list:
             return pd.DataFrame(metadata_list)
@@ -180,7 +202,7 @@ class ArchiMedDownloader:
 
     def convert_dicom_to_png(self, import_folder=None, export_folder=None, bit_depth=None,
                             create_subfolders=None, resize_y=None, monochrome=None,
-                            delete_dicom=None):
+                            delete_dicom=None, dicom_files=None):
         """
         Convert all DICOM files in import_folder (including subfolders) to PNG format.
         
@@ -192,6 +214,7 @@ class ArchiMedDownloader:
             resize_y (int): Height to resize images to
             monochrome (int): Default monochrome type (1 or 2)
             delete_dicom (bool): If True, delete the DICOM file after conversion
+            dicom_files (list): Optional list of specific DICOM files to convert
         
         Returns:
             dict: Summary of conversion process with counts
@@ -216,10 +239,14 @@ class ArchiMedDownloader:
         # Create export folder if it doesn't exist
         os.makedirs(export_folder, exist_ok=True)
         
-        # Find all DICOM files recursively
-        dicom_files = []
-        for ext in ['.dcm', '.DCM']:  # Common DICOM extensions
-            dicom_files.extend(glob.glob(os.path.join(import_folder, '**/*' + ext), recursive=True))
+        # Determine which DICOM files to process
+        if dicom_files is None:
+            dicom_files = []
+            for ext in ['.dcm', '.DCM']:  # Common DICOM extensions
+                dicom_files.extend(glob.glob(os.path.join(import_folder, '**/*' + ext), recursive=True))
+        else:
+            # Filter to existing files only
+            dicom_files = [p for p in dicom_files if os.path.isfile(p)]
         
         # Initialize counters
         successful = 0
@@ -368,19 +395,23 @@ class ArchiMedDownloader:
         # Create download directory if it doesn't exist
         os.makedirs(download_path, exist_ok=True)
         
-        # Get user info for verification
-        user_info = self.a3conn.getUserInfos()
-        print(f"{ANSI['G']}ArchiMed Authentication Info")
-        print(f"{ANSI['B']}Username:{ANSI['W']} {user_info.get('userInfos', {}).get('login', 'Unknown')}")
-        print(f"{ANSI['B']}User level:{ANSI['W']} {user_info.get('userInfos', {}).get('level', 'Unknown')}")
-        
-        # Fix for native groups display
-        native_groups = user_info.get('userInfos', {}).get('nativeGroups', ['None'])
-        native_groups_str = ', '.join(native_groups) if native_groups else 'None'
-        print(f"{ANSI['B']}Native Groups:{ANSI['W']} {native_groups_str}")
-        
-        print(f"{ANSI['B']}Authorized studies:{ANSI['W']} {', '.join(user_info.get('authorizedStudies', ['None']))}")
-        print(f"{ANSI['B']}Authorized temporary storages:{ANSI['W']} {', '.join(user_info.get('authorizedTmpStorages', ['None']))}")
+        # Suppress SSL warnings for this operation
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="Unverified HTTPS request.*")
+            
+            # Get user info for verification
+            user_info = self.a3conn.getUserInfos()
+            print(f"{ANSI['G']}ArchiMed Authentication Info")
+            print(f"{ANSI['B']}Username:{ANSI['W']} {user_info.get('userInfos', {}).get('login', 'Unknown')}")
+            print(f"{ANSI['B']}User level:{ANSI['W']} {user_info.get('userInfos', {}).get('level', 'Unknown')}")
+            
+            # Fix for native groups display
+            native_groups = user_info.get('userInfos', {}).get('nativeGroups', ['None'])
+            native_groups_str = ', '.join(native_groups) if native_groups else 'None'
+            print(f"{ANSI['B']}Native Groups:{ANSI['W']} {native_groups_str}")
+            
+            print(f"{ANSI['B']}Authorized studies:{ANSI['W']} {', '.join(user_info.get('authorizedStudies', ['None']))}")
+            print(f"{ANSI['B']}Authorized temporary storages:{ANSI['W']} {', '.join(user_info.get('authorizedTmpStorages', ['None']))}")
         
         # Check if the FileID column exists
         if file_id_column not in dataframe.columns:
@@ -420,14 +451,18 @@ class ArchiMedDownloader:
                 else:
                     print(f"{ANSI['B']}Downloading file {ANSI['W']}{file_id}{ANSI['B']} (Progress: {ANSI['W']}{((i+1)/total_files)*100:.1f}%{ANSI['B']} - {ANSI['W']}{i+1}/{total_files}{ANSI['B']}) from{ANSI['W']} ArchiMed")
                     
-                    # Download the file
-                    result = self.a3conn.downloadFile(
-                        file_id,
-                        asStream=False,
-                        destDir=file_output_path,
-                        filename=f"{file_id}.dcm",
-                        inWorklist=False
-                    )
+                    # Suppress SSL warnings for this download
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", category=Warning, message="Unverified HTTPS request.*")
+                        
+                        # Download the file
+                        result = self.a3conn.downloadFile(
+                            file_id,
+                            asStream=False,
+                            destDir=file_output_path,
+                            filename=f"{file_id}.dcm",
+                            inWorklist=False
+                        )
                     
                     downloaded_count += 1
                     batch_files.append(dicom_file_path)  # Store the path, not the result
@@ -449,7 +484,7 @@ class ArchiMedDownloader:
                     # Convert batch if requested
                     if convert and batch_files:
                         try:
-                            summary = self.convert_dicom_to_png()
+                            summary = self.convert_dicom_to_png(dicom_files=batch_files)
                             print(f"{ANSI['G']}Conversion summary: {summary}{ANSI['W']}")
                         except Exception as e:
                             print(f"{ANSI['R']}Error during conversion: {str(e)}{ANSI['W']}")
