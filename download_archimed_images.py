@@ -23,6 +23,10 @@ import urllib3
 # Suppress InsecureRequestWarning from urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Suppress pydicom character set warnings globally
+warnings.filterwarnings("ignore", category=UserWarning, 
+                      message="Incorrect value for Specific Character Set.*")
+
 # ANSI escape codes for colored output
 ANSI = {
     'R': '\033[91m',  # Red
@@ -219,6 +223,9 @@ class ArchiMedDownloader:
         Returns:
             dict: Summary of conversion process with counts
         """
+        # Set pydicom to use a more permissive approach to character sets
+        pydicom.config.assume_implicit_vr_switch = True
+        
         # Use instance variables if parameters not provided
         import_folder = import_folder or self.download_path
         export_folder = export_folder or self.images_path
@@ -253,18 +260,27 @@ class ArchiMedDownloader:
         failed = 0
         skipped = 0
         
-        # Suppress specific pydicom warnings about character sets
-        warnings.filterwarnings("ignore", category=UserWarning, module="pydicom.charset")
+        # Suppress ALL warnings, including pydicom character set warnings
+        warnings.filterwarnings("ignore", category=Warning)
         
         # Process each DICOM file
         for dicom_path in tqdm(dicom_files, desc="Converting DICOM files to PNG", total=len(dicom_files)):
             try:
-                # Try to read as DICOM
+                # Try to read as DICOM and fix character set issues
                 try:
-                    ds = pydicom.dcmread(dicom_path)
-                    pixel_array = ds.pixel_array
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", category=Warning)
+                        ds = pydicom.dcmread(dicom_path)
+                        
+                        # Fix character set issues before processing further
+                        if hasattr(ds, 'SpecificCharacterSet'):
+                            if ds.SpecificCharacterSet == 'ISO_2022_IR_6':
+                                ds.SpecificCharacterSet = 'ISO 2022 IR 6'
+                        
+                        pixel_array = ds.pixel_array
                 except Exception as e:
                     skipped += 1
+                    print(f"{ANSI['Y']}Warning: Could not read DICOM file {dicom_path}: {str(e)}{ANSI['W']}")
                     continue  # Skip if not a valid DICOM file
                 
                 # Get metadata for subfolder creation if needed
@@ -379,6 +395,9 @@ class ArchiMedDownloader:
         Returns:
             pandas.DataFrame: DataFrame with metadata of converted files
         """
+        # Set pydicom to use a more permissive approach to character sets
+        pydicom.config.assume_implicit_vr_switch = True
+        
         if dataframe is None:
             csv_path = os.path.join(self.csv_folder, self.csv_labels_file)
             print(f"{ANSI['B']}Importing labeled data from: {csv_path}{ANSI['W']}")
@@ -395,9 +414,9 @@ class ArchiMedDownloader:
         # Create download directory if it doesn't exist
         os.makedirs(download_path, exist_ok=True)
         
-        # Suppress SSL warnings for this operation
+        # Suppress all warnings for this function to catch both SSL and DICOM warnings
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=Warning, message="Unverified HTTPS request.*")
+            warnings.filterwarnings("ignore", category=Warning)
             
             # Get user info for verification
             user_info = self.a3conn.getUserInfos()
@@ -451,9 +470,9 @@ class ArchiMedDownloader:
                 else:
                     print(f"{ANSI['B']}Downloading file {ANSI['W']}{file_id}{ANSI['B']} (Progress: {ANSI['W']}{((i+1)/total_files)*100:.1f}%{ANSI['B']} - {ANSI['W']}{i+1}/{total_files}{ANSI['B']}) from{ANSI['W']} ArchiMed")
                     
-                    # Suppress SSL warnings for this download
+                    # Suppress both SSL and DICOM warnings for this download
                     with warnings.catch_warnings():
-                        warnings.filterwarnings("ignore", category=Warning, message="Unverified HTTPS request.*")
+                        warnings.filterwarnings("ignore", category=Warning)
                         
                         # Download the file
                         result = self.a3conn.downloadFile(
@@ -466,11 +485,29 @@ class ArchiMedDownloader:
                     
                     downloaded_count += 1
                     batch_files.append(dicom_file_path)  # Store the path, not the result
+
+                    # If we just downloaded a file, try to fix its character set immediately
+                    if os.path.exists(dicom_file_path):
+                        try:
+                            with warnings.catch_warnings():
+                                warnings.filterwarnings("ignore", category=Warning)
+                                # Read and modify the DICOM file to fix character set issues
+                                dicom_data = pydicom.dcmread(dicom_file_path)
+                                if hasattr(dicom_data, 'SpecificCharacterSet'):
+                                    if dicom_data.SpecificCharacterSet == 'ISO_2022_IR_6':
+                                        dicom_data.SpecificCharacterSet = 'ISO 2022 IR 6'
+                                        # Save the modified file back
+                                        dicom_data.save_as(dicom_file_path)
+                        except Exception as e:
+                            print(f"{ANSI['Y']}Warning: Could not fix character set in file {file_id}: {str(e)}{ANSI['W']}")
                 
                 # Collect metadata for this file if needed
                 if self.export_metadata:
                     try:
-                        file_metadata = self.collect_metadata(file_id)
+                        # Suppress all warnings during metadata collection
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings("ignore", category=Warning)
+                            file_metadata = self.collect_metadata(file_id)
                         
                         # Add metadata to the collection if not already present
                         if not file_metadata.empty and (all_metadata.empty or not (all_metadata['FileID'] == file_id).any()):
@@ -484,7 +521,10 @@ class ArchiMedDownloader:
                     # Convert batch if requested
                     if convert and batch_files:
                         try:
-                            summary = self.convert_dicom_to_png(dicom_files=batch_files)
+                            # Suppress warnings during conversion
+                            with warnings.catch_warnings():
+                                warnings.filterwarnings("ignore", category=Warning)
+                                summary = self.convert_dicom_to_png(dicom_files=batch_files)
                             print(f"{ANSI['G']}Conversion summary: {summary}{ANSI['W']}")
                         except Exception as e:
                             print(f"{ANSI['R']}Error during conversion: {str(e)}{ANSI['W']}")
