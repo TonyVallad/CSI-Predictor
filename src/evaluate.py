@@ -69,21 +69,20 @@ def compute_confusion_matrices_per_zone(predictions: np.ndarray, targets: np.nda
     confusion_matrices = {}
     
     for i, zone_name in enumerate(zone_names):
-        # Get valid (non-unknown) samples for this zone
-        zone_mask = targets[:, i] != 4
-        if zone_mask.sum() > 0:
-            zone_pred = predictions[:, i][zone_mask]
-            zone_true = targets[:, i][zone_mask]
-            
+        # Get all samples for this zone (including unknown class 4)
+        zone_pred = predictions[:, i]
+        zone_true = targets[:, i]
+        
+        if len(zone_pred) > 0:
             # Convert to PyTorch tensors
             pred_tensor = torch.from_numpy(zone_pred)
             true_tensor = torch.from_numpy(zone_true)
             
-            # Compute confusion matrix
+            # Compute confusion matrix including all classes (0-4, including unknown)
             cm = compute_confusion_matrix(pred_tensor, true_tensor, num_classes=5)
             confusion_matrices[zone_name] = cm.numpy()
         else:
-            # No valid samples for this zone
+            # No samples for this zone
             confusion_matrices[zone_name] = np.zeros((5, 5))
     
     return confusion_matrices
@@ -105,28 +104,24 @@ def create_classification_report_per_zone(predictions: np.ndarray, targets: np.n
     reports = {}
     
     for i, zone_name in enumerate(zone_names):
-        # Get valid (non-unknown) samples for this zone
-        zone_mask = targets[:, i] != 4
-        zone_pred = predictions[:, i][zone_mask]
-        zone_true = targets[:, i][zone_mask]
+        # Get all samples for this zone (including unknown class 4)
+        zone_pred = predictions[:, i]
+        zone_true = targets[:, i]
         
         if len(zone_pred) == 0:
-            reports[zone_name] = {"note": "No valid samples for this zone"}
+            reports[zone_name] = {"note": "No samples for this zone"}
             continue
         
         # Convert to PyTorch tensors
         pred_tensor = torch.from_numpy(zone_pred)
         true_tensor = torch.from_numpy(zone_true)
         
-        # Compute confusion matrix
+        # Compute confusion matrix including all classes
         cm = compute_confusion_matrix(pred_tensor, true_tensor, num_classes=5).numpy()
         
-        # Calculate per-class metrics
+        # Calculate per-class metrics for classes 0-3 (exclude unknown class from precision/recall)
         report = {}
-        for class_idx in range(5):
-            if class_idx == 4:  # Skip unknown class for per-class metrics
-                continue
-                
+        for class_idx in range(4):  # Only for classes 0-3 (Normal, Mild, Moderate, Severe)
             tp = cm[class_idx, class_idx]
             fp = cm[:, class_idx].sum() - tp
             fn = cm[class_idx, :].sum() - tp
@@ -144,12 +139,29 @@ def create_classification_report_per_zone(predictions: np.ndarray, targets: np.n
                 "support": support
             }
         
-        # Overall metrics for this zone
+        # Add unknown class statistics (no precision/recall, just support)
+        unknown_support = (true_tensor == 4).sum().item()
+        if unknown_support > 0:
+            report["Unknown"] = {
+                "precision": float('nan'),  # Not meaningful for unknown class
+                "recall": float('nan'),     # Not meaningful for unknown class
+                "f1-score": float('nan'),   # Not meaningful for unknown class
+                "support": unknown_support
+            }
+        
+        # Overall metrics for this zone (including unknown samples)
         accuracy = (pred_tensor == true_tensor).float().mean().item()
         total_support = len(zone_pred)
         
+        # Calculate separate accuracy excluding unknown samples for medical evaluation
+        valid_mask = true_tensor != 4
+        if valid_mask.sum() > 0:
+            valid_accuracy = (pred_tensor[valid_mask] == true_tensor[valid_mask]).float().mean().item()
+            report["accuracy_valid_only"] = valid_accuracy
+        
         report["accuracy"] = accuracy
         report["total_support"] = total_support
+        report["unknown_samples"] = unknown_support
         reports[zone_name] = report
     
     return reports
@@ -157,7 +169,7 @@ def create_classification_report_per_zone(predictions: np.ndarray, targets: np.n
 
 def save_confusion_matrix_graphs(
     confusion_matrices: Dict[str, np.ndarray],
-    output_dir: str,
+    config,
     run_name: str,
     split_name: str = "validation"
 ) -> None:
@@ -166,7 +178,7 @@ def save_confusion_matrix_graphs(
     
     Args:
         confusion_matrices: Dictionary of confusion matrices per zone
-        output_dir: Base output directory 
+        config: Configuration object with graph_dir
         run_name: Experiment run name
         split_name: Name of the data split (validation/test)
     """
@@ -174,8 +186,8 @@ def save_confusion_matrix_graphs(
     import seaborn as sns
     from pathlib import Path
     
-    # Create graphs directory structure
-    graphs_dir = Path(output_dir) / "graphs" / run_name
+    # Create graphs directory structure using config
+    graphs_dir = Path(config.graph_dir) / run_name
     graphs_dir.mkdir(parents=True, exist_ok=True)
     
     class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
@@ -724,6 +736,13 @@ def evaluate_model(config) -> None:
     logger.info("Evaluating on validation set...")
     val_predictions, val_targets, val_loss = evaluate_model_on_loader(model, val_loader, device, criterion)
     
+    # Debug: Check for unknown samples in validation set
+    val_unknown_count = (val_targets == 4).sum()
+    logger.info(f"Validation set has {val_unknown_count} unknown labels (class 4) out of {val_targets.size} total labels")
+    for i, zone_name in enumerate(zone_names):
+        zone_unknown = (val_targets[:, i] == 4).sum()
+        logger.info(f"  {zone_name}: {zone_unknown} unknown labels")
+    
     val_zone_metrics = compute_zone_metrics(val_predictions, val_targets, zone_names)
     val_overall_metrics = compute_overall_metrics(val_predictions, val_targets)
     val_overall_metrics['loss'] = val_loss
@@ -735,6 +754,13 @@ def evaluate_model(config) -> None:
     # Evaluate on test set
     logger.info("Evaluating on test set...")
     test_predictions, test_targets, test_loss = evaluate_model_on_loader(model, test_loader, device, criterion)
+    
+    # Debug: Check for unknown samples in test set
+    test_unknown_count = (test_targets == 4).sum()
+    logger.info(f"Test set has {test_unknown_count} unknown labels (class 4) out of {test_targets.size} total labels")
+    for i, zone_name in enumerate(zone_names):
+        zone_unknown = (test_targets[:, i] == 4).sum()
+        logger.info(f"  {zone_name}: {zone_unknown} unknown labels")
     
     test_zone_metrics = compute_zone_metrics(test_predictions, test_targets, zone_names)
     test_overall_metrics = compute_overall_metrics(test_predictions, test_targets)
@@ -766,8 +792,8 @@ def evaluate_model(config) -> None:
     save_predictions(test_predictions, test_targets, output_dir / "test_predictions.csv", zone_names)
     
     # Save confusion matrix graphs
-    save_confusion_matrix_graphs(val_confusion_matrices, output_dir, make_run_name(config), "validation")
-    save_confusion_matrix_graphs(test_confusion_matrices, output_dir, make_run_name(config), "test")
+    save_confusion_matrix_graphs(val_confusion_matrices, config, make_run_name(config), "validation")
+    save_confusion_matrix_graphs(test_confusion_matrices, config, make_run_name(config), "test")
     
     # Log to WandB
     logger.info("Logging results to Weights & Biases...")

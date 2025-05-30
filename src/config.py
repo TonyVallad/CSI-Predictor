@@ -48,6 +48,7 @@ class Config:
         models_dir: Directory for saving/loading models
         csv_dir: Directory containing CSV files
         ini_dir: Directory containing config files
+        graph_dir: Directory for saving graphs and visualizations
         
         # Labels configuration
         labels_csv: CSV filename (not full path)
@@ -79,6 +80,7 @@ class Config:
     models_dir: str = "./models"
     csv_dir: str = "/home/pyuser/data/Paradise_CSV"
     ini_dir: str = "./config/"
+    graph_dir: str = "./graphs"  # Directory for saving graphs and visualizations
     
     # Labels configuration
     labels_csv: str = "Labeled_Data_RAW.csv"
@@ -347,6 +349,7 @@ class ConfigLoader:
             models_dir=self.get_config_value("MODELS_DIR", "./models", str),
             csv_dir=self.get_config_value("CSV_DIR", "/home/pyuser/data/Paradise_CSV", str),
             ini_dir=self.get_config_value("INI_DIR", "./config/", str),
+            graph_dir=self.get_config_value("GRAPH_DIR", "./graphs", str),
             labels_csv=self.get_config_value("LABELS_CSV", "Labeled_Data_RAW.csv", str),
             labels_csv_separator=self.get_config_value("LABELS_CSV_SEPARATOR", ";", str),
             
