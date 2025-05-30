@@ -44,12 +44,13 @@ class Config:
         
         # Data Paths
         data_source: Source of data (local/remote)
-        data_path: Path to dataset directory
-        models_path: Path to save/load models (legacy, use models_folder)
-        models_folder: Folder where models will be stored
-        csv_path: Path to metadata CSV file
-        ini_path: Path to config.ini file
-        labels_csv: Path to labels CSV file
+        data_dir: Directory containing images
+        models_dir: Directory for saving/loading models
+        csv_dir: Directory containing CSV files
+        ini_dir: Directory containing config files
+        
+        # Labels configuration
+        labels_csv: CSV filename (not full path)
         labels_csv_separator: CSV separator character
         
         # Training Hyperparameters
@@ -70,17 +71,18 @@ class Config:
     
     # Environment and Device Settings
     device: str = "cuda"
-    load_data_to_memory: bool = False
+    load_data_to_memory: bool = True
     
     # Data Paths
     data_source: str = "local"
-    data_path: str = "./data"
-    models_path: str = "./models"  # Legacy field for backward compatibility
-    models_folder: str = "./models"
-    csv_path: str = "./data/metadata.csv"
-    ini_path: str = "./config.ini"
-    labels_csv: str = "./data/labels.csv"
-    labels_csv_separator: str = ","
+    data_dir: str = "/home/pyuser/data/Paradise_Images"
+    models_dir: str = "./models"
+    csv_dir: str = "/home/pyuser/data/Paradise_CSV"
+    ini_dir: str = "./config/"
+    
+    # Labels configuration
+    labels_csv: str = "Labeled_Data_RAW.csv"
+    labels_csv_separator: str = ";"
     
     # Training Hyperparameters
     batch_size: int = 32
@@ -97,6 +99,21 @@ class Config:
     _ini_vars: Dict[str, Any] = field(default_factory=dict, repr=False)
     _missing_keys: List[str] = field(default_factory=list, repr=False)
     
+    @property
+    def data_path(self) -> str:
+        """Legacy property for backward compatibility."""
+        return self.data_dir
+    
+    @property
+    def csv_path(self) -> str:
+        """Construct full path to labels CSV file."""
+        return f"{self.csv_dir}/{self.labels_csv}"
+    
+    @property
+    def models_folder(self) -> str:
+        """Legacy property for backward compatibility."""
+        return self.models_dir
+    
     def get_model_path(self, model_name: str, extension: str = "pth") -> str:
         """
         Get the full path for a model file.
@@ -110,7 +127,7 @@ class Config:
         """
         if not extension.startswith('.'):
             extension = f'.{extension}'
-        return f"{self.models_folder}/{model_name}{extension}"
+        return f"{self.models_dir}/{model_name}{extension}"
 
 
 class ConfigLoader:
@@ -162,8 +179,8 @@ class ConfigLoader:
             logger.warning(f"Environment file not found: {self.env_path}")
             # Also check system environment variables
             system_env_keys = [
-                "DEVICE", "LOAD_DATA_TO_MEMORY", "DATA_SOURCE", "DATA_PATH",
-                "MODELS_PATH", "CSV_PATH", "INI_PATH", "LABELS_CSV", "LABELS_CSV_SEPARATOR"
+                "DEVICE", "LOAD_DATA_TO_MEMORY", "DATA_SOURCE", "DATA_DIR",
+                "MODELS_DIR", "CSV_DIR", "INI_DIR", "LABELS_CSV", "LABELS_CSV_SEPARATOR"
             ]
             for key in system_env_keys:
                 if key in os.environ:
@@ -322,17 +339,16 @@ class ConfigLoader:
         config = Config(
             # Environment and Device Settings
             device=self.get_config_value("DEVICE", "cuda", str),
-            load_data_to_memory=self.get_config_value("LOAD_DATA_TO_MEMORY", False, bool),
+            load_data_to_memory=self.get_config_value("LOAD_DATA_TO_MEMORY", True, bool),
             
             # Data Paths
             data_source=self.get_config_value("DATA_SOURCE", "local", str),
-            data_path=self.get_config_value("DATA_PATH", "./data", str),
-            models_path=self.get_config_value("MODELS_PATH", "./models", str),
-            models_folder=self.get_config_value("MODELS_FOLDER", "./models", str),
-            csv_path=self.get_config_value("CSV_PATH", "./data/metadata.csv", str),
-            ini_path=self.get_config_value("INI_PATH", "./config.ini", str),
-            labels_csv=self.get_config_value("LABELS_CSV", "./data/labels.csv", str),
-            labels_csv_separator=self.get_config_value("LABELS_CSV_SEPARATOR", ",", str),
+            data_dir=self.get_config_value("DATA_DIR", "/home/pyuser/data/Paradise_Images", str),
+            models_dir=self.get_config_value("MODELS_DIR", "./models", str),
+            csv_dir=self.get_config_value("CSV_DIR", "/home/pyuser/data/Paradise_CSV", str),
+            ini_dir=self.get_config_value("INI_DIR", "./config/", str),
+            labels_csv=self.get_config_value("LABELS_CSV", "Labeled_Data_RAW.csv", str),
+            labels_csv_separator=self.get_config_value("LABELS_CSV_SEPARATOR", ";", str),
             
             # Training Hyperparameters
             batch_size=self.get_config_value("BATCH_SIZE", 32, int),
@@ -408,24 +424,22 @@ class ConfigLoader:
     
     def copy_config_with_timestamp(self, config: Config) -> None:
         """
-        Copy resolved config.ini to INI_PATH with timestamp when training starts.
+        Copy resolved config.ini to INI_DIR with timestamp when training starts.
         
         Args:
-            config: Configuration instance
-            
-        # Unit test stub:
-        # def test_copy_config_with_timestamp():
-        #     loader = ConfigLoader()
-        #     config = Config()
-        #     loader.copy_config_with_timestamp(config)
-        #     # Check that timestamped config file was created
-        #     assert any(Path(".").glob("config_*.ini"))
+            config: Configuration instance with resolved values
         """
+        from datetime import datetime
+        import configparser
+        from pathlib import Path
+        
+        # Create timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Create timestamped filename
-        ini_path = Path(config.ini_path)
-        timestamped_path = ini_path.parent / f"{ini_path.stem}_{timestamp}{ini_path.suffix}"
+        # Create timestamped filename in ini_dir
+        ini_dir = Path(config.ini_dir)
+        ini_dir.mkdir(parents=True, exist_ok=True)
+        timestamped_path = ini_dir / f"config_{timestamp}.ini"
         
         # Create new config with resolved values
         new_config = configparser.ConfigParser()
@@ -441,14 +455,17 @@ class ConfigLoader:
         # Add model section
         new_config.add_section("MODEL")
         new_config.set("MODEL", "MODEL_ARCH", config.model_arch)
-        new_config.set("MODEL", "MODELS_FOLDER", config.models_folder)
         
         # Add environment section with resolved paths
         new_config.add_section("ENVIRONMENT")
         new_config.set("ENVIRONMENT", "DEVICE", config.device)
-        new_config.set("ENVIRONMENT", "DATA_PATH", config.data_path)
-        new_config.set("ENVIRONMENT", "MODELS_PATH", config.models_path)
-        new_config.set("ENVIRONMENT", "MODELS_FOLDER", config.models_folder)
+        new_config.set("ENVIRONMENT", "DATA_SOURCE", config.data_source)
+        new_config.set("ENVIRONMENT", "DATA_DIR", config.data_dir)
+        new_config.set("ENVIRONMENT", "MODELS_DIR", config.models_dir)
+        new_config.set("ENVIRONMENT", "CSV_DIR", config.csv_dir)
+        new_config.set("ENVIRONMENT", "INI_DIR", config.ini_dir)
+        new_config.set("ENVIRONMENT", "LABELS_CSV", config.labels_csv)
+        new_config.set("ENVIRONMENT", "LABELS_CSV_SEPARATOR", config.labels_csv_separator)
         new_config.set("ENVIRONMENT", "LOAD_DATA_TO_MEMORY", str(config.load_data_to_memory))
         
         # Write timestamped config
@@ -498,20 +515,11 @@ def get_config(env_path: str = ".env", ini_path: str = "config.ini", force_reloa
 
 def copy_config_on_training_start() -> None:
     """
-    Copy configuration with timestamp when training starts.
-    
-    This function should be called at the beginning of training to create
-    a timestamped snapshot of the configuration for reproducibility.
-    
-    # Unit test stub:
-    # def test_copy_config_on_training_start():
-    #     copy_config_on_training_start()
-    #     # Check that timestamped config was created
-    #     timestamp_pattern = "config_[0-9]{8}_[0-9]{6}.ini"
-    #     assert any(Path(".").glob(timestamp_pattern))
+    Copy resolved configuration with timestamp when training starts.
+    This creates a snapshot of the actual configuration used for training.
     """
     config = get_config()
-    loader = ConfigLoader(config.ini_path, config.ini_path)
+    loader = ConfigLoader()  # Don't need to pass ini_path since we're not loading from file
     loader.copy_config_with_timestamp(config)
 
 

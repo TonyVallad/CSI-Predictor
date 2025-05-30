@@ -14,14 +14,13 @@ import numpy as np
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
-from loguru import logger
 from tqdm import tqdm
 import wandb
 
 from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
 from .models import build_model
-from .utils import EarlyStopping, MetricsTracker
+from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, log_config
 from .metrics import compute_pytorch_f1_metrics
 
 
@@ -32,14 +31,7 @@ def set_random_seeds(seed: int = 42) -> None:
     Args:
         seed: Random seed value
     """
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    
+    seed_everything(seed)
     logger.info(f"Set random seeds to {seed}")
 
 
@@ -225,13 +217,16 @@ def validate_epoch(
 
 def train_model(config) -> None:
     """
-    Main training function.
+    Main training function with enhanced logging and utilities.
     
     Args:
         config: Configuration object
     """
     # Set random seeds for reproducibility
     set_random_seeds(42)
+    
+    # Log configuration
+    log_config(config)
     
     # Setup device
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
@@ -269,8 +264,10 @@ def train_model(config) -> None:
     # Initialize wandb
     use_wandb = False
     try:
+        run_name = f"train_{make_run_name(config)}"
         wandb.init(
             project="csi-predictor",
+            name=run_name,
             config={
                 "model_arch": config.model_arch,
                 "batch_size": config.batch_size,
@@ -279,11 +276,12 @@ def train_model(config) -> None:
                 "n_epochs": config.n_epochs,
                 "patience": config.patience,
                 "device": config.device,
-                "models_folder": config.models_folder
+                "models_dir": config.models_dir,
+                "run_name": run_name
             }
         )
         use_wandb = True
-        logger.info("Initialized Weights & Biases logging")
+        logger.info(f"Initialized Weights & Biases logging with run name: {run_name}")
     except Exception as e:
         logger.warning(f"Could not initialize wandb: {e}")
     
@@ -350,11 +348,18 @@ def train_model(config) -> None:
                 'val_loss': val_metrics["loss"],
                 'val_f1_macro': val_metrics["f1_macro"],
                 'config': config,
-                'model_name': model_name
+                'model_name': model_name,
+                'run_name': run_name if use_wandb else None
             }, save_path)
             
             logger.info(f"Saved best model: {model_name}")
             logger.info(f"  Val Loss: {val_metrics['loss']:.4f}, Val F1: {val_metrics['f1_macro']:.4f}")
+            
+            # Log model artifact to wandb
+            if use_wandb:
+                artifact = wandb.Artifact(f"model-{run_name}", type="model")
+                artifact.add_file(str(save_path))
+                wandb.log_artifact(artifact)
         
         # Early stopping check
         if early_stopping(val_metrics["loss"]):
@@ -366,6 +371,10 @@ def train_model(config) -> None:
     logger.info(f"Best validation F1: {best_val_f1:.4f}")
     
     if use_wandb:
+        # Log final summary
+        wandb.summary["best_val_loss"] = best_val_loss
+        wandb.summary["best_val_f1"] = best_val_f1
+        wandb.summary["total_epochs"] = epoch
         wandb.finish()
 
 

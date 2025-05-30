@@ -12,6 +12,8 @@ CSI-PREDICTOR/
 │   ├── __init__.py
 │   ├── config.py           # Configuration management
 │   ├── data.py             # Data loading and preprocessing
+│   ├── data_split.py       # Pure PyTorch data splitting
+│   ├── metrics.py          # Pure PyTorch metrics
 │   ├── models/             # Neural network models
 │   │   ├── __init__.py
 │   │   ├── backbones.py    # Feature extraction backbones
@@ -19,7 +21,7 @@ CSI-PREDICTOR/
 │   ├── train.py            # Training logic
 │   ├── evaluate.py         # Evaluation logic
 │   └── utils.py            # Utility functions
-├── .env.template           # Environment variables template
+├── .env                    # Environment variables (create from template)
 ├── config.ini              # Configuration file
 ├── main.py                 # Main entry point
 ├── requirements.txt        # Python dependencies
@@ -46,9 +48,24 @@ CSI-PREDICTOR/
    ```
 
 4. **Configure environment**
+   Create a `.env` file with your paths and settings:
    ```bash
-   cp .env.template .env
-   # Edit .env with your specific paths and settings
+   # Device configuration
+   DEVICE=cuda
+   
+   # Data loading configuration
+   LOAD_DATA_TO_MEMORY=True
+   
+   # Data source and paths
+   DATA_SOURCE=local
+   DATA_DIR=/home/pyuser/data/Paradise_Images
+   MODELS_DIR=./models
+   CSV_DIR=/home/pyuser/data/Paradise_CSV
+   INI_DIR=./config/
+   
+   # Labels configuration
+   LABELS_CSV=Labeled_Data_RAW.csv
+   LABELS_CSV_SEPARATOR=;
    ```
 
 ## Configuration
@@ -64,37 +81,36 @@ The project uses a centralized configuration system that loads settings from mul
 ```ini
 [TRAINING]
 BATCH_SIZE = 32
-N_EPOCHS = 100
-PATIENCE = 10
+N_EPOCHS = 3
+PATIENCE = 2
 LEARNING_RATE = 0.001
 OPTIMIZER = adam
 
 [MODEL]
 MODEL_ARCH = resnet50
-MODELS_FOLDER = ./models
 ```
 
-**Environment Variables** (copy `env_template.txt` to `.env`):
+**Environment Variables** (in `.env` file):
 ```bash
 # Device configuration
 DEVICE=cuda
-LOAD_DATA_TO_MEMORY=False
+LOAD_DATA_TO_MEMORY=True
 
-# Data configuration
+# Data source and paths
 DATA_SOURCE=local
-DATA_PATH=./data
+DATA_DIR=/home/pyuser/data/Paradise_Images
+MODELS_DIR=./models
+CSV_DIR=/home/pyuser/data/Paradise_CSV
+INI_DIR=./config/
 
-# Model storage
-MODELS_FOLDER=./models
-
-# CSV configuration
-CSV_PATH=./data/metadata.csv
-LABELS_CSV=./data/labels.csv
+# Labels configuration
+LABELS_CSV=Labeled_Data_RAW.csv
+LABELS_CSV_SEPARATOR=;
 ```
 
 ### Model Path Configuration
 
-The project now uses `MODELS_FOLDER` to specify where models are stored. To get the full path of a specific model:
+The project uses `MODELS_DIR` to specify where models are stored. To get the full path of a specific model:
 
 ```python
 from src.config import cfg
@@ -103,8 +119,8 @@ from src.config import cfg
 model_path = cfg.get_model_path("best_model")  # Returns: ./models/best_model.pth
 model_path = cfg.get_model_path("resnet50_trained", "pt")  # Returns: ./models/resnet50_trained.pt
 
-# During training, models are automatically saved to the models folder
-# Example: best model saved as ./models/best_model.pth
+# During training, models are automatically saved to the models directory
+# Example: best model saved as ./models/ResNet50 - 2024-01-01 12:30:45.pth
 ```
 
 ### Configuration Usage
@@ -114,63 +130,210 @@ from src.config import cfg
 
 # Access configuration values
 print(f"Batch size: {cfg.batch_size}")
-print(f"Models folder: {cfg.models_folder}")
+print(f"Models directory: {cfg.models_dir}")
+print(f"CSV path: {cfg.csv_path}")  # Computed from CSV_DIR + LABELS_CSV
 print(f"Best model path: {cfg.get_model_path('best_model')}")
 ```
 
 ## Usage
 
 ### Training
-Train a new model:
+Train a new model with comprehensive logging:
 ```bash
-python main.py --mode train
+# Basic training
+python -m src.train
+
+# With custom configuration
+python -m src.train --ini custom_config.ini
+
+# The training will automatically:
+# - Set up Loguru logging with rotating files in ./logs/
+# - Initialize Weights & Biases tracking 
+# - Save best model with timestamped name
+# - Log detailed metrics and model artifacts
 ```
 
 ### Evaluation
-Evaluate an existing model:
+Comprehensive model evaluation with confusion matrices and WandB logging:
 ```bash
-python main.py --mode eval
+# Evaluate latest model
+python -m src.evaluate
+
+# With custom configuration
+python -m src.evaluate --ini custom_config.ini
+
+# The evaluation will:
+# - Load the most recent model automatically
+# - Compute per-zone confusion matrices and classification reports
+# - Log detailed results to WandB with heatmaps and tables
+# - Generate comprehensive evaluation reports
+# - Save predictions and metrics to files
 ```
 
-### Both Training and Evaluation
-Run complete pipeline:
+### Advanced Usage Examples
+
+**Quick Model Testing:**
 ```bash
+# Train for just a few epochs for testing
+# Edit config.ini: N_EPOCHS = 3, PATIENCE = 2
+python -m src.train
+```
+
+**Resuming Training:**
+The system automatically saves the best model during training. While automatic resuming isn't implemented yet, you can manually restart training with the same configuration.
+
+**Custom Logging Setup:**
+```python
+from src.utils import setup_logging
+
+# Setup custom logging directory and level  
+setup_logging(log_dir="./custom_logs", log_level="DEBUG")
+```
+
+**Configuration Utilities:**
+```python
+from src.config import cfg
+from src.utils import print_config, make_run_name
+
+# Pretty print current configuration
+print_config(cfg)
+
+# Generate run name for experiments
+run_name = make_run_name(cfg)  # e.g., "resnet50_20241201_143025"
+```
+
+### Legacy Entry Point
+Use the main.py entry point for backward compatibility:
+```bash
+python main.py --mode train
+python main.py --mode eval
 python main.py --mode both
 ```
 
-### Custom Configuration
-Use custom config files:
+## Monitoring and Logging
+
+### Weights & Biases Integration
+
+The project includes comprehensive Weights & Biases integration for experiment tracking:
+
+**Training Tracking:**
+- Real-time loss and F1 metrics (overall and per-zone)
+- Learning rate schedules
+- Model artifacts and checkpoints
+- Configuration logging
+- Run naming with timestamps
+
+**Evaluation Tracking:**
+- Confusion matrices as interactive heatmaps for each CSI zone
+- Classification reports as structured tables
+- Per-zone accuracy and F1 scores
+- Comparative analysis between validation and test sets
+
+**WandB Project Structure:**
+- Training runs: `csi-predictor` project
+- Evaluation runs: `csi-predictor-eval` project
+- Run names: `train_ResNet50_20241201_143025` or `eval_ResNet50_20241201_143026`
+
+**Access your dashboards:**
 ```bash
-python main.py --config custom_config.ini --env custom.env
+# After running training/evaluation, WandB will provide URLs like:
+# https://wandb.ai/your-username/csi-predictor
+# https://wandb.ai/your-username/csi-predictor-eval
 ```
+
+### Loguru Logging System
+
+Enhanced logging with automatic file rotation and structured output:
+
+**Log Files:**
+- Location: `./logs/csi_predictor_YYYY-MM-DD.log`
+- Rotation: Daily rotation with 30-day retention
+- Compression: Automatic ZIP compression of old logs
+- Format: Timestamped with module, function, and line information
+
+**Log Levels:**
+- Console: Colored output with INFO level by default
+- Files: All levels captured (DEBUG, INFO, WARNING, ERROR)
+
+**Example log output:**
+```
+2024-12-01 14:30:25 | INFO     | src.train:train_model:245 - Starting epoch 1/100
+2024-12-01 14:30:25 | INFO     | src.utils:log_config:156 - Configuration loaded: ...
+2024-12-01 14:30:26 | WARNING  | src.evaluate:log_to_wandb:123 - Could not log to WandB: ...
+```
+
+### Model Artifacts and Checkpointing
+
+**Automatic Model Saving:**
+- Best models saved with timestamps: `ResNet50 - 2024-01-01 12:30:45.pth`
+- Location: Configurable via `MODELS_DIR` (default: `./models/`)
+- Includes: Model weights, optimizer state, configuration, metrics
+
+**WandB Model Artifacts:**
+- Automatic upload of best model checkpoints
+- Versioned model storage with run associations
+- Easy model downloading and deployment
+
+### Evaluation Reports
+
+**Comprehensive Reports Generated:**
+- `validation_comprehensive_report.txt`: Detailed validation analysis
+- `test_comprehensive_report.txt`: Final test set evaluation
+- `validation_predictions.csv`: Per-sample predictions and ground truth
+- `test_predictions.csv`: Test set predictions for further analysis
+
+**Report Contents:**
+- Overall accuracy and F1 scores
+- Per-zone metrics (6 CSI zones)
+- Confusion matrices for each zone
+- Detailed classification reports (precision, recall, F1 per class)
+- Class distribution analysis
+- Summary statistics
 
 ## Model Architecture
 
 The project supports multiple backbone architectures for feature extraction:
-- ResNet (resnet18, resnet34, resnet50, resnet101)
-- EfficientNet
-- DenseNet
-- Vision Transformers
+- **ResNet**: resnet18, resnet34, resnet50, resnet101, resnet152
+- **EfficientNet**: efficientnet_b0 through efficientnet_b4
+- **DenseNet**: densenet121, densenet169, densenet201 (including CheXNet)
+- **Vision Transformers**: vit_base_patch16_224, vit_large_patch16_224
+- **Custom architectures**: Custom_1 (simple CNN baseline), Rad_DINO
 
-The model predicts CSI scores for 6 zones of chest X-rays using a multi-output regression head.
+The model predicts CSI scores for 6 zones of chest X-rays using multi-output classification (5 classes per zone: 0-3 for severity, 4 for ungradable).
 
 ## Data Format
 
 Expected data structure:
 ```
-data/
-├── images/
+/home/pyuser/data/
+├── Paradise_Images/          # Images directory (DATA_DIR)
 │   ├── image1.jpg
 │   ├── image2.jpg
 │   └── ...
-├── metadata.csv
-└── labels.csv
+└── Paradise_CSV/             # CSV directory (CSV_DIR)
+    └── Labeled_Data_RAW.csv  # Labels file (LABELS_CSV)
 ```
 
-Labels CSV should contain:
-- Image filename
-- CSI scores for 6 zones
-- Additional metadata
+The labels CSV should contain:
+- **FileID**: Image filename
+- **right_sup, left_sup**: Right and left superior zone CSI scores
+- **right_mid, left_mid**: Right and left middle zone CSI scores  
+- **right_inf, left_inf**: Right and left inferior zone CSI scores
+- CSV separator should match `LABELS_CSV_SEPARATOR` (default: `;`)
+
+Values can be:
+- 0-3: CSI severity scores
+- NaN/empty: Automatically converted to class 4 (ungradable)
+
+## Key Features
+
+- **Pure PyTorch implementation**: No scikit-learn dependency
+- **Comprehensive metrics**: F1 scores, accuracy with zone-specific reporting
+- **Data augmentation**: Configurable transforms for training
+- **Early stopping**: Prevent overfitting with patience-based stopping
+- **Experiment tracking**: Weights & Biases integration
+- **Model checkpointing**: Automatic saving with timestamps
+- **Stratified splitting**: Smart data splitting based on unknown value patterns
 
 ## Contributing
 

@@ -5,12 +5,56 @@ Contains helper functions for training, evaluation, and general utilities.
 
 import torch
 import numpy as np
+import random
+import sys
 from typing import Dict, List, Any, Optional, Tuple
 from collections import defaultdict
 import pandas as pd
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from datetime import datetime
+from pathlib import Path
 
+# Import and configure Loguru
+from loguru import logger
+
+# Configure Loguru with rotating file handler
+def setup_logging(log_dir: str = "./logs", log_level: str = "INFO") -> None:
+    """
+    Setup Loguru logging with rotating file handler.
+    
+    Args:
+        log_dir: Directory for log files
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
+    """
+    # Create logs directory
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    
+    # Remove default handler
+    logger.remove()
+    
+    # Add console handler with colors
+    logger.add(
+        sys.stderr,
+        level=log_level,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        colorize=True
+    )
+    
+    # Add rotating file handler
+    logger.add(
+        Path(log_dir) / "csi_predictor_{time:YYYY-MM-DD}.log",
+        level=log_level,
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        rotation="1 day",
+        retention="30 days",
+        compression="zip"
+    )
+    
+    logger.info(f"Logging setup complete. Log files will be stored in: {log_dir}")
+
+# Setup logging on import
+setup_logging()
 
 class EarlyStopping:
     """Early stopping utility to stop training when validation loss stops improving."""
@@ -623,4 +667,137 @@ def create_debug_dataset(
     print(f"Debug dataset created:")
     print(f"  Images: {images_dir}")
     print(f"  Labels: {csv_path}")
-    print(f"  Samples: {num_samples}") 
+    print(f"  Samples: {num_samples}")
+
+
+def make_run_name(cfg) -> str:
+    """
+    Create a timestamped run name for experiments, similar to training pattern.
+    
+    Args:
+        cfg: Configuration object
+        
+    Returns:
+        Formatted run name with timestamp
+        
+    Example:
+        ResNet50_20241201_143025
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_arch = cfg.model_arch.replace("-", "_").replace(" ", "_")
+    return f"{model_arch}_{timestamp}"
+
+
+def seed_everything(seed: int = 42) -> None:
+    """
+    Set random seed for all libraries for reproducibility.
+    
+    Args:
+        seed: Random seed value
+    """
+    # Python random module
+    random.seed(seed)
+    
+    # NumPy
+    np.random.seed(seed)
+    
+    # PyTorch
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    
+    # PyTorch CUDNN
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
+    logger.info(f"Set random seed to {seed} for all libraries")
+
+
+def pretty_print_config(cfg) -> str:
+    """
+    Create a pretty-printed string representation of the configuration.
+    
+    Args:
+        cfg: Configuration object
+        
+    Returns:
+        Formatted configuration string
+    """
+    lines = []
+    lines.append("=" * 60)
+    lines.append("CSI-Predictor Configuration")
+    lines.append("=" * 60)
+    
+    # Environment and Device Settings
+    lines.append("\n🖥️  Environment & Device:")
+    lines.append(f"  Device: {cfg.device}")
+    lines.append(f"  Load data to memory: {cfg.load_data_to_memory}")
+    lines.append(f"  Data source: {cfg.data_source}")
+    
+    # Data Paths
+    lines.append("\n📁 Data Paths:")
+    lines.append(f"  Data directory: {cfg.data_dir}")
+    lines.append(f"  Models directory: {cfg.models_dir}")
+    lines.append(f"  CSV directory: {cfg.csv_dir}")
+    lines.append(f"  INI directory: {cfg.ini_dir}")
+    lines.append(f"  Labels CSV: {cfg.labels_csv}")
+    lines.append(f"  CSV separator: '{cfg.labels_csv_separator}'")
+    lines.append(f"  Computed CSV path: {cfg.csv_path}")
+    
+    # Training Hyperparameters
+    lines.append("\n🏋️  Training Settings:")
+    lines.append(f"  Batch size: {cfg.batch_size}")
+    lines.append(f"  Epochs: {cfg.n_epochs}")
+    lines.append(f"  Patience: {cfg.patience}")
+    lines.append(f"  Learning rate: {cfg.learning_rate}")
+    lines.append(f"  Optimizer: {cfg.optimizer}")
+    
+    # Model Configuration
+    lines.append("\n🤖 Model Configuration:")
+    lines.append(f"  Architecture: {cfg.model_arch}")
+    
+    # Configuration Sources
+    if hasattr(cfg, '_env_vars') and hasattr(cfg, '_ini_vars') and hasattr(cfg, '_missing_keys'):
+        lines.append("\n📋 Configuration Sources:")
+        lines.append(f"  Environment variables: {len(cfg._env_vars)}")
+        lines.append(f"  INI file variables: {len(cfg._ini_vars)}")
+        if cfg._missing_keys:
+            lines.append(f"  Missing keys (using defaults): {len(cfg._missing_keys)}")
+            lines.append(f"    {', '.join(cfg._missing_keys)}")
+    
+    lines.append("\n" + "=" * 60)
+    
+    return "\n".join(lines)
+
+
+def print_config(cfg) -> None:
+    """
+    Print configuration in a pretty format.
+    
+    Args:
+        cfg: Configuration object
+    """
+    print(pretty_print_config(cfg))
+
+
+def log_config(cfg) -> None:
+    """
+    Log configuration using Loguru.
+    
+    Args:
+        cfg: Configuration object
+    """
+    config_str = pretty_print_config(cfg)
+    logger.info(f"Configuration loaded:\n{config_str}")
+
+
+# Export main utilities
+__all__ = [
+    'EarlyStopping', 'MetricsTracker', 'AverageMeter',
+    'set_seed', 'seed_everything', 'count_parameters', 'get_learning_rate',
+    'save_checkpoint', 'load_checkpoint', 'calculate_class_weights',
+    'format_time', 'print_model_summary', 'create_dirs',
+    'show_batch', 'visualize_data_distribution', 'analyze_missing_data',
+    'create_debug_dataset', 'make_run_name', 'pretty_print_config',
+    'print_config', 'log_config', 'setup_logging', 'logger'
+] 
