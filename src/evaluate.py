@@ -348,14 +348,27 @@ def compute_zone_metrics(predictions: np.ndarray, targets: np.ndarray, zone_name
     f1_metrics = compute_pytorch_f1_metrics(logits, target_tensor, ignore_index=4)
     accuracy_metrics = compute_accuracy(logits, target_tensor, ignore_index=4)
     
+    # Map zone names to metric keys (zone_1, zone_2, etc.)
+    zone_key_mapping = {
+        "right_sup": "zone_1",
+        "left_sup": "zone_2", 
+        "right_mid": "zone_3",
+        "left_mid": "zone_4",
+        "right_inf": "zone_5",
+        "left_inf": "zone_6"
+    }
+    
     # Reorganize into per-zone format
     zone_metrics = {}
-    for i, zone_name in enumerate(zone_names):
+    for zone_name in zone_names:
+        metric_key = zone_key_mapping.get(zone_name, f"zone_{zone_names.index(zone_name) + 1}")
+        zone_idx = zone_names.index(zone_name)
+        
         zone_metrics[zone_name] = {
-            'f1_macro': f1_metrics[f'f1_{zone_name}'],
-            'f1_weighted': f1_metrics[f'f1_{zone_name}'],  # Use same as macro for simplicity
-            'accuracy': accuracy_metrics[f'acc_{zone_name}'],
-            'valid_samples': int((targets[:, i] != 4).sum())
+            'f1_macro': f1_metrics.get(f'f1_{metric_key}', 0.0),
+            'f1_weighted': f1_metrics.get(f'f1_{metric_key}', 0.0),  # Use same as macro for simplicity
+            'accuracy': accuracy_metrics.get(f'acc_{metric_key}', 0.0),
+            'valid_samples': int((targets[:, zone_idx] != 4).sum())
         }
     
     return zone_metrics
