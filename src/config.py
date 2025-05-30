@@ -1,0 +1,523 @@
+"""
+Centralized Configuration Loader for CSI-Predictor.
+
+This module provides a singleton configuration system that:
+- Loads environment variables from .env files using dotenv_values
+- Loads configuration from INI files using configparser
+- Merges and validates configuration into an immutable dataclass
+- Provides automatic type conversion for int, float, bool values
+- Logs missing keys and validation errors using loguru
+- Copies resolved config.ini with timestamp when training starts
+
+Usage:
+    from src.config import cfg
+    
+    # Access configuration values
+    print(cfg.batch_size)  # Automatically converted to int
+    print(cfg.learning_rate)  # Automatically converted to float
+    print(cfg.device)  # String value
+"""
+
+import os
+import configparser
+import shutil
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional, Union, List
+from dotenv import dotenv_values
+from loguru import logger
+
+
+@dataclass(frozen=True)
+class Config:
+    """
+    Immutable configuration dataclass that holds all application settings.
+    
+    This dataclass is frozen (immutable) to prevent accidental modification
+    of configuration values during runtime.
+    
+    Attributes:
+        # Environment and Device Settings
+        device: Device for computation (cuda/cpu)
+        load_data_to_memory: Whether to load all data into memory
+        
+        # Data Paths
+        data_source: Source of data (local/remote)
+        data_path: Path to dataset directory
+        models_path: Path to save/load models (legacy, use models_folder)
+        models_folder: Folder where models will be stored
+        csv_path: Path to metadata CSV file
+        ini_path: Path to config.ini file
+        labels_csv: Path to labels CSV file
+        labels_csv_separator: CSV separator character
+        
+        # Training Hyperparameters
+        batch_size: Training batch size
+        n_epochs: Number of training epochs
+        patience: Early stopping patience
+        learning_rate: Learning rate for optimizer
+        optimizer: Optimizer type (adam/adamw/sgd)
+        
+        # Model Configuration
+        model_arch: Model architecture name
+        
+        # Internal
+        _env_vars: Environment variables dict
+        _ini_vars: INI file variables dict
+        _missing_keys: List of missing configuration keys
+    """
+    
+    # Environment and Device Settings
+    device: str = "cuda"
+    load_data_to_memory: bool = False
+    
+    # Data Paths
+    data_source: str = "local"
+    data_path: str = "./data"
+    models_path: str = "./models"  # Legacy field for backward compatibility
+    models_folder: str = "./models"
+    csv_path: str = "./data/metadata.csv"
+    ini_path: str = "./config.ini"
+    labels_csv: str = "./data/labels.csv"
+    labels_csv_separator: str = ","
+    
+    # Training Hyperparameters
+    batch_size: int = 32
+    n_epochs: int = 100
+    patience: int = 10
+    learning_rate: float = 0.001
+    optimizer: str = "adam"
+    
+    # Model Configuration
+    model_arch: str = "resnet50"
+    
+    # Internal fields (not for external configuration)
+    _env_vars: Dict[str, Any] = field(default_factory=dict, repr=False)
+    _ini_vars: Dict[str, Any] = field(default_factory=dict, repr=False)
+    _missing_keys: List[str] = field(default_factory=list, repr=False)
+    
+    def get_model_path(self, model_name: str, extension: str = "pth") -> str:
+        """
+        Get the full path for a model file.
+        
+        Args:
+            model_name: Name of the model (without extension)
+            extension: File extension (default: pth)
+            
+        Returns:
+            Full path to the model file
+        """
+        if not extension.startswith('.'):
+            extension = f'.{extension}'
+        return f"{self.models_folder}/{model_name}{extension}"
+
+
+class ConfigLoader:
+    """
+    Configuration loader that handles loading, validation, and merging of configuration
+    from multiple sources (.env files and config.ini).
+    """
+    
+    def __init__(self, env_path: str = ".env", ini_path: str = "config.ini"):
+        """
+        Initialize configuration loader.
+        
+        Args:
+            env_path: Path to .env file
+            ini_path: Path to config.ini file
+        """
+        self.env_path = Path(env_path)
+        self.ini_path = Path(ini_path)
+        self._env_vars = {}
+        self._ini_vars = {}
+        self._missing_keys = []
+    
+    def load_env_vars(self) -> Dict[str, Any]:
+        """
+        Load environment variables from .env file using dotenv_values.
+        
+        Returns:
+            Dictionary of environment variables
+            
+        # Unit test stub:
+        # def test_load_env_vars():
+        #     loader = ConfigLoader()
+        #     # Create temporary .env file
+        #     with open(".env.test", "w") as f:
+        #         f.write("DEVICE=cpu\nBATCH_SIZE=64\n")
+        #     loader.env_path = Path(".env.test")
+        #     env_vars = loader.load_env_vars()
+        #     assert env_vars["DEVICE"] == "cpu"
+        #     assert env_vars["BATCH_SIZE"] == "64"
+        #     os.remove(".env.test")
+        """
+        if self.env_path.exists():
+            logger.info(f"Loading environment variables from {self.env_path}")
+            env_vars = dotenv_values(self.env_path)
+            self._env_vars = dict(env_vars)  # Convert from dotenv dict to regular dict
+            logger.debug(f"Loaded {len(self._env_vars)} environment variables")
+            return self._env_vars
+        else:
+            logger.warning(f"Environment file not found: {self.env_path}")
+            # Also check system environment variables
+            system_env_keys = [
+                "DEVICE", "LOAD_DATA_TO_MEMORY", "DATA_SOURCE", "DATA_PATH",
+                "MODELS_PATH", "CSV_PATH", "INI_PATH", "LABELS_CSV", "LABELS_CSV_SEPARATOR"
+            ]
+            for key in system_env_keys:
+                if key in os.environ:
+                    self._env_vars[key] = os.environ[key]
+            
+            if self._env_vars:
+                logger.info(f"Using {len(self._env_vars)} system environment variables")
+            
+            return self._env_vars
+    
+    def load_ini_vars(self) -> Dict[str, Any]:
+        """
+        Load configuration from INI file using configparser.
+        
+        Returns:
+            Dictionary of INI file variables
+            
+        # Unit test stub:
+        # def test_load_ini_vars():
+        #     loader = ConfigLoader()
+        #     # Create temporary config.ini file
+        #     with open("config.test.ini", "w") as f:
+        #         f.write("[TRAINING]\nBATCH_SIZE=32\nLEARNING_RATE=0.001\n")
+        #     loader.ini_path = Path("config.test.ini")
+        #     ini_vars = loader.load_ini_vars()
+        #     assert ini_vars["BATCH_SIZE"] == "32"
+        #     assert ini_vars["LEARNING_RATE"] == "0.001"
+        #     os.remove("config.test.ini")
+        """
+        if self.ini_path.exists():
+            logger.info(f"Loading configuration from {self.ini_path}")
+            config = configparser.ConfigParser()
+            config.read(self.ini_path)
+            
+            # Flatten INI structure to simple key-value pairs
+            ini_vars = {}
+            for section_name, section in config.items():
+                if section_name != 'DEFAULT':  # Skip DEFAULT section
+                    for key, value in section.items():
+                        ini_vars[key.upper()] = value
+            
+            self._ini_vars = ini_vars
+            logger.debug(f"Loaded {len(self._ini_vars)} configuration values from INI file")
+            return self._ini_vars
+        else:
+            logger.warning(f"Configuration file not found: {self.ini_path}")
+            return {}
+    
+    def convert_type(self, value: Any, target_type: type) -> Any:
+        """
+        Convert value to target type with proper handling of string representations.
+        
+        Args:
+            value: Value to convert
+            target_type: Target type (int, float, bool, str)
+            
+        Returns:
+            Converted value
+            
+        # Unit test stub:
+        # def test_convert_type():
+        #     loader = ConfigLoader()
+        #     assert loader.convert_type("42", int) == 42
+        #     assert loader.convert_type("3.14", float) == 3.14
+        #     assert loader.convert_type("true", bool) == True
+        #     assert loader.convert_type("false", bool) == False
+        #     assert loader.convert_type("hello", str) == "hello"
+        """
+        if value is None:
+            return None
+        
+        if target_type == bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() in ('true', '1', 'yes', 'on', 'enabled')
+            return bool(value)
+        
+        if target_type == int:
+            return int(float(value))  # Handle "32.0" -> 32
+        
+        if target_type == float:
+            return float(value)
+        
+        if target_type == str:
+            return str(value)
+        
+        return value
+    
+    def get_config_value(self, key: str, default: Any, target_type: type) -> Any:
+        """
+        Get configuration value with priority: ENV > INI > DEFAULT.
+        
+        Args:
+            key: Configuration key name
+            default: Default value if not found
+            target_type: Target type for conversion
+            
+        Returns:
+            Configuration value with proper type conversion
+            
+        # Unit test stub:
+        # def test_get_config_value():
+        #     loader = ConfigLoader()
+        #     loader._env_vars = {"BATCH_SIZE": "64"}
+        #     loader._ini_vars = {"BATCH_SIZE": "32"}
+        #     # ENV should take priority
+        #     assert loader.get_config_value("BATCH_SIZE", 16, int) == 64
+        #     # INI should be used if ENV missing
+        #     assert loader.get_config_value("LEARNING_RATE", 0.01, float) == 0.01
+        """
+        # Priority: Environment variables > INI file > Default
+        value = None
+        source = "default"
+        
+        if key in self._env_vars:
+            value = self._env_vars[key]
+            source = "environment"
+        elif key in self._ini_vars:
+            value = self._ini_vars[key]
+            source = "ini_file"
+        else:
+            value = default
+            self._missing_keys.append(key)
+        
+        try:
+            converted_value = self.convert_type(value, target_type)
+            logger.debug(f"Config {key}={converted_value} (from {source})")
+            return converted_value
+        except (ValueError, TypeError) as e:
+            logger.error(f"Failed to convert {key}={value} to {target_type.__name__}: {e}")
+            logger.warning(f"Using default value for {key}: {default}")
+            return default
+    
+    def create_config(self) -> Config:
+        """
+        Create and validate configuration by merging all sources.
+        
+        Returns:
+            Immutable Config instance
+            
+        # Unit test stub:
+        # def test_create_config():
+        #     loader = ConfigLoader()
+        #     config = loader.create_config()
+        #     assert isinstance(config, Config)
+        #     assert config.device in ["cuda", "cpu"]
+        #     assert config.batch_size > 0
+        #     assert config.learning_rate > 0
+        """
+        # Load from all sources
+        self.load_env_vars()
+        self.load_ini_vars()
+        
+        # Create config with type-safe value extraction
+        config = Config(
+            # Environment and Device Settings
+            device=self.get_config_value("DEVICE", "cuda", str),
+            load_data_to_memory=self.get_config_value("LOAD_DATA_TO_MEMORY", False, bool),
+            
+            # Data Paths
+            data_source=self.get_config_value("DATA_SOURCE", "local", str),
+            data_path=self.get_config_value("DATA_PATH", "./data", str),
+            models_path=self.get_config_value("MODELS_PATH", "./models", str),
+            models_folder=self.get_config_value("MODELS_FOLDER", "./models", str),
+            csv_path=self.get_config_value("CSV_PATH", "./data/metadata.csv", str),
+            ini_path=self.get_config_value("INI_PATH", "./config.ini", str),
+            labels_csv=self.get_config_value("LABELS_CSV", "./data/labels.csv", str),
+            labels_csv_separator=self.get_config_value("LABELS_CSV_SEPARATOR", ",", str),
+            
+            # Training Hyperparameters
+            batch_size=self.get_config_value("BATCH_SIZE", 32, int),
+            n_epochs=self.get_config_value("N_EPOCHS", 100, int),
+            patience=self.get_config_value("PATIENCE", 10, int),
+            learning_rate=self.get_config_value("LEARNING_RATE", 0.001, float),
+            optimizer=self.get_config_value("OPTIMIZER", "adam", str),
+            
+            # Model Configuration
+            model_arch=self.get_config_value("MODEL_ARCH", "resnet50", str),
+            
+            # Internal
+            _env_vars=self._env_vars.copy(),
+            _ini_vars=self._ini_vars.copy(),
+            _missing_keys=self._missing_keys.copy()
+        )
+        
+        # Log missing keys
+        if self._missing_keys:
+            logger.warning(f"Missing configuration keys (using defaults): {', '.join(self._missing_keys)}")
+        
+        # Validate configuration
+        self.validate_config(config)
+        
+        return config
+    
+    def validate_config(self, config: Config) -> None:
+        """
+        Validate configuration values and log any issues.
+        
+        Args:
+            config: Configuration instance to validate
+            
+        # Unit test stub:
+        # def test_validate_config():
+        #     loader = ConfigLoader()
+        #     config = Config(batch_size=0)  # Invalid
+        #     with pytest.raises(ValueError):
+        #         loader.validate_config(config)
+        """
+        errors = []
+        
+        # Validate positive integers
+        if config.batch_size <= 0:
+            errors.append(f"batch_size must be positive, got {config.batch_size}")
+        
+        if config.n_epochs <= 0:
+            errors.append(f"n_epochs must be positive, got {config.n_epochs}")
+        
+        if config.patience < 0:
+            errors.append(f"patience must be non-negative, got {config.patience}")
+        
+        # Validate positive floats
+        if config.learning_rate <= 0:
+            errors.append(f"learning_rate must be positive, got {config.learning_rate}")
+        
+        # Validate choices
+        valid_devices = ["cuda", "cpu", "mps"]
+        if config.device not in valid_devices:
+            errors.append(f"device must be one of {valid_devices}, got {config.device}")
+        
+        valid_optimizers = ["adam", "adamw", "sgd"]
+        if config.optimizer.lower() not in valid_optimizers:
+            errors.append(f"optimizer must be one of {valid_optimizers}, got {config.optimizer}")
+        
+        # Log validation results
+        if errors:
+            for error in errors:
+                logger.error(f"Configuration validation error: {error}")
+            raise ValueError(f"Configuration validation failed with {len(errors)} errors")
+        else:
+            logger.info("Configuration validation passed")
+    
+    def copy_config_with_timestamp(self, config: Config) -> None:
+        """
+        Copy resolved config.ini to INI_PATH with timestamp when training starts.
+        
+        Args:
+            config: Configuration instance
+            
+        # Unit test stub:
+        # def test_copy_config_with_timestamp():
+        #     loader = ConfigLoader()
+        #     config = Config()
+        #     loader.copy_config_with_timestamp(config)
+        #     # Check that timestamped config file was created
+        #     assert any(Path(".").glob("config_*.ini"))
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Create timestamped filename
+        ini_path = Path(config.ini_path)
+        timestamped_path = ini_path.parent / f"{ini_path.stem}_{timestamp}{ini_path.suffix}"
+        
+        # Create new config with resolved values
+        new_config = configparser.ConfigParser()
+        
+        # Add training section
+        new_config.add_section("TRAINING")
+        new_config.set("TRAINING", "BATCH_SIZE", str(config.batch_size))
+        new_config.set("TRAINING", "N_EPOCHS", str(config.n_epochs))
+        new_config.set("TRAINING", "PATIENCE", str(config.patience))
+        new_config.set("TRAINING", "LEARNING_RATE", str(config.learning_rate))
+        new_config.set("TRAINING", "OPTIMIZER", config.optimizer)
+        
+        # Add model section
+        new_config.add_section("MODEL")
+        new_config.set("MODEL", "MODEL_ARCH", config.model_arch)
+        new_config.set("MODEL", "MODELS_FOLDER", config.models_folder)
+        
+        # Add environment section with resolved paths
+        new_config.add_section("ENVIRONMENT")
+        new_config.set("ENVIRONMENT", "DEVICE", config.device)
+        new_config.set("ENVIRONMENT", "DATA_PATH", config.data_path)
+        new_config.set("ENVIRONMENT", "MODELS_PATH", config.models_path)
+        new_config.set("ENVIRONMENT", "MODELS_FOLDER", config.models_folder)
+        new_config.set("ENVIRONMENT", "LOAD_DATA_TO_MEMORY", str(config.load_data_to_memory))
+        
+        # Write timestamped config
+        try:
+            with open(timestamped_path, 'w') as f:
+                new_config.write(f)
+            logger.info(f"Copied resolved configuration to {timestamped_path}")
+        except Exception as e:
+            logger.error(f"Failed to copy configuration: {e}")
+
+
+# Singleton instance
+_config_instance: Optional[Config] = None
+
+
+def get_config(env_path: str = ".env", ini_path: str = "config.ini", force_reload: bool = False) -> Config:
+    """
+    Get singleton configuration instance.
+    
+    Args:
+        env_path: Path to .env file
+        ini_path: Path to config.ini file
+        force_reload: Whether to force reload configuration
+        
+    Returns:
+        Singleton Config instance
+        
+    # Unit test stub:
+    # def test_get_config_singleton():
+    #     config1 = get_config()
+    #     config2 = get_config()
+    #     assert config1 is config2  # Same instance
+    #     
+    #     config3 = get_config(force_reload=True)
+    #     assert config3 is not config1  # New instance
+    """
+    global _config_instance
+    
+    if _config_instance is None or force_reload:
+        logger.info("Initializing configuration...")
+        loader = ConfigLoader(env_path, ini_path)
+        _config_instance = loader.create_config()
+        logger.info("Configuration initialized successfully")
+    
+    return _config_instance
+
+
+def copy_config_on_training_start() -> None:
+    """
+    Copy configuration with timestamp when training starts.
+    
+    This function should be called at the beginning of training to create
+    a timestamped snapshot of the configuration for reproducibility.
+    
+    # Unit test stub:
+    # def test_copy_config_on_training_start():
+    #     copy_config_on_training_start()
+    #     # Check that timestamped config was created
+    #     timestamp_pattern = "config_[0-9]{8}_[0-9]{6}.ini"
+    #     assert any(Path(".").glob(timestamp_pattern))
+    """
+    config = get_config()
+    loader = ConfigLoader(config.ini_path, config.ini_path)
+    loader.copy_config_with_timestamp(config)
+
+
+# Singleton instance - import this in other modules
+cfg = get_config()
+
+
+# Export main components
+__all__ = ['Config', 'ConfigLoader', 'get_config', 'copy_config_on_training_start', 'cfg'] 
