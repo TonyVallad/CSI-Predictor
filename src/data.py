@@ -81,7 +81,8 @@ def load_csv_data(csv_path: str) -> pd.DataFrame:
     required_columns = ['FileID'] + CSI_COLUMNS
     
     try:
-        df = pd.read_csv(csv_path, usecols=required_columns)
+        # Use the CSV separator from configuration
+        df = pd.read_csv(csv_path, usecols=required_columns, sep=cfg.labels_csv_separator)
         print(f"Loaded {len(df)} samples from CSV")
         
         # Check for missing columns
@@ -302,7 +303,9 @@ class CSIDataset(Dataset):
         
         for idx in tqdm(range(len(self.dataframe)), desc="Caching images"):
             file_id = self.dataframe.iloc[idx]['FileID']
-            image_path = self.data_path / file_id
+            # Automatically append .png extension to FileID
+            image_filename = f"{file_id}.png"
+            image_path = self.data_path / image_filename
             
             try:
                 # Load and store raw PIL image (before transforms)
@@ -341,7 +344,9 @@ class CSIDataset(Dataset):
                 raise RuntimeError(f"Cached image at index {idx} is None")
         else:
             # Load from disk
-            image_path = self.data_path / file_id
+            # Automatically append .png extension to FileID
+            image_filename = f"{file_id}.png"
+            image_path = self.data_path / image_filename
             try:
                 image = Image.open(image_path).convert('RGB')
             except Exception as e:
