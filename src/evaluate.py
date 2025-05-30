@@ -195,9 +195,12 @@ def save_confusion_matrix_graphs(
         if cm.sum() > 0:  # Only create graphs for zones with data
             plt.figure(figsize=(8, 6))
             
+            # Convert to integers for proper formatting
+            cm_int = cm.astype(int)
+            
             # Create heatmap
             sns.heatmap(
-                cm, 
+                cm_int, 
                 annot=True, 
                 fmt='d', 
                 cmap='Blues',
