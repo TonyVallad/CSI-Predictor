@@ -458,7 +458,7 @@ def create_data_loaders(
         train_dataset,
         batch_size=config.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=0,  # Reduced from 4 to 0 to avoid shared memory issues
         pin_memory=True,
         drop_last=True
     )
@@ -467,7 +467,7 @@ def create_data_loaders(
         val_dataset,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=0,  # Reduced from 4 to 0 to avoid shared memory issues
         pin_memory=True
     )
     
@@ -475,7 +475,7 @@ def create_data_loaders(
         test_dataset,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=0,  # Reduced from 4 to 0 to avoid shared memory issues
         pin_memory=True
     )
     
