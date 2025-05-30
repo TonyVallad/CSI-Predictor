@@ -1,95 +1,111 @@
 """
 Training logic for CSI-Predictor.
-Handles model training, validation, and checkpointing.
+Handles model training, validation, and checkpointing with classification loss.
 """
 
+import os
+import random
+import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+import numpy as np
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any, Optional, Tuple
 from loguru import logger
 from tqdm import tqdm
 import wandb
-from pathlib import Path
-from typing import Dict, Any, Optional
 
+from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
-from .models.backbones import get_backbone
-from .models.head import CSIRegressionHead
+from .models import build_model
 from .utils import EarlyStopping, MetricsTracker
-from .config import Config
+from .metrics import compute_pytorch_f1_metrics
 
 
-class CSIModel(nn.Module):
-    """Complete CSI prediction model."""
+def set_random_seeds(seed: int = 42) -> None:
+    """
+    Set random seeds for reproducibility.
     
-    def __init__(self, backbone_arch: str, num_zones: int = 6, pretrained: bool = True):
+    Args:
+        seed: Random seed value
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
+    logger.info(f"Set random seeds to {seed}")
+
+
+class MaskedCrossEntropyLoss(nn.Module):
+    """
+    Masked Cross-Entropy Loss that ignores positions where ground-truth == 4.
+    
+    This handles "ungradable" or "unknown" CSI zones by not including them
+    in the loss computation.
+    """
+    
+    def __init__(self, ignore_index: int = 4):
         """
-        Initialize CSI model.
+        Initialize masked cross-entropy loss.
         
         Args:
-            backbone_arch: Backbone architecture name
-            num_zones: Number of CSI zones
-            pretrained: Use pretrained backbone
+            ignore_index: Class index to ignore (default: 4 for ungradable)
         """
         super().__init__()
-        
-        # Get backbone
-        self.backbone = get_backbone(backbone_arch, pretrained)
-        
-        # Get regression head
-        self.head = CSIRegressionHead(
-            input_dim=self.backbone.feature_dim,
-            num_zones=num_zones
-        )
+        self.ignore_index = ignore_index
+        self.cross_entropy = nn.CrossEntropyLoss(ignore_index=ignore_index, reduction='none')
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass."""
-        features = self.backbone(x)
-        predictions = self.head(features)
-        return predictions
+    def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """
+        Compute masked cross-entropy loss.
+        
+        Args:
+            predictions: Model predictions [batch_size, n_zones, n_classes]
+            targets: Ground truth labels [batch_size, n_zones]
+            
+        Returns:
+            Scalar loss value
+        """
+        batch_size, n_zones, n_classes = predictions.shape
+        
+        # Reshape for cross-entropy: [batch_size * n_zones, n_classes]
+        predictions_flat = predictions.view(-1, n_classes)
+        targets_flat = targets.view(-1)
+        
+        # Compute loss per sample
+        losses = self.cross_entropy(predictions_flat, targets_flat)
+        
+        # Create mask for valid (non-ignored) targets
+        mask = (targets_flat != self.ignore_index)
+        
+        # Apply mask and compute mean only over valid samples
+        if mask.sum() > 0:
+            masked_losses = losses[mask]
+            return masked_losses.mean()
+        else:
+            # If all samples are masked, return zero loss
+            return torch.tensor(0.0, device=predictions.device, requires_grad=True)
 
 
-def create_model(config) -> CSIModel:
+def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, float]:
     """
-    Create CSI model from configuration.
+    Compute F1 scores for CSI prediction using PyTorch.
     
     Args:
-        config: Configuration object
+        predictions: Model predictions [batch_size, n_zones, n_classes]
+        targets: Ground truth labels [batch_size, n_zones]
         
     Returns:
-        CSI model
+        Dictionary with F1 metrics
     """
-    model = CSIModel(
-        backbone_arch=config.model_arch,
-        num_zones=6,
-        pretrained=True
-    )
-    return model
-
-
-def create_optimizer(model: nn.Module, config: Config) -> optim.Optimizer:
-    """
-    Create optimizer from configuration.
-    
-    Args:
-        model: Model to optimize
-        config: Configuration object
-        
-    Returns:
-        Optimizer
-    """
-    optimizer_name = config.optimizer.lower()
-    learning_rate = config.learning_rate
-    
-    if optimizer_name == "adam":
-        return optim.Adam(model.parameters(), lr=learning_rate)
-    elif optimizer_name == "adamw":
-        return optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
-    elif optimizer_name == "sgd":
-        return optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-    else:
-        raise ValueError(f"Unsupported optimizer: {optimizer_name}")
+    return compute_pytorch_f1_metrics(predictions, targets, ignore_index=4)
 
 
 def train_epoch(
@@ -117,14 +133,17 @@ def train_epoch(
     model.train()
     metrics = MetricsTracker()
     
-    progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}")
+    all_predictions = []
+    all_targets = []
+    
+    progress_bar = tqdm(train_loader, desc=f"Epoch {epoch} [Train]")
     
     for batch_idx, (images, targets) in enumerate(progress_bar):
         images, targets = images.to(device), targets.to(device)
         
         # Forward pass
         optimizer.zero_grad()
-        outputs = model(images)
+        outputs = model(images)  # [batch_size, n_zones, n_classes]
         loss = criterion(outputs, targets)
         
         # Backward pass
@@ -134,10 +153,23 @@ def train_epoch(
         # Track metrics
         metrics.update("loss", loss.item())
         
+        # Store for F1 computation
+        all_predictions.append(outputs.detach())
+        all_targets.append(targets.detach())
+        
         # Update progress bar
         progress_bar.set_postfix({"loss": f"{loss.item():.4f}"})
     
-    return metrics.get_averages()
+    # Compute F1 metrics
+    all_pred_tensor = torch.cat(all_predictions, dim=0)
+    all_target_tensor = torch.cat(all_targets, dim=0)
+    f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
+    
+    # Combine metrics
+    train_metrics = metrics.get_averages()
+    train_metrics.update(f1_metrics)
+    
+    return train_metrics
 
 
 def validate_epoch(
@@ -161,6 +193,9 @@ def validate_epoch(
     model.eval()
     metrics = MetricsTracker()
     
+    all_predictions = []
+    all_targets = []
+    
     with torch.no_grad():
         for images, targets in tqdm(val_loader, desc="Validation"):
             images, targets = images.to(device), targets.to(device)
@@ -171,17 +206,33 @@ def validate_epoch(
             
             # Track metrics
             metrics.update("loss", loss.item())
+            
+            # Store for F1 computation
+            all_predictions.append(outputs)
+            all_targets.append(targets)
     
-    return metrics.get_averages()
+    # Compute F1 metrics
+    all_pred_tensor = torch.cat(all_predictions, dim=0)
+    all_target_tensor = torch.cat(all_targets, dim=0)
+    f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
+    
+    # Combine metrics
+    val_metrics = metrics.get_averages()
+    val_metrics.update(f1_metrics)
+    
+    return val_metrics
 
 
-def train_model(config: Config) -> None:
+def train_model(config) -> None:
     """
     Main training function.
     
     Args:
         config: Configuration object
     """
+    # Set random seeds for reproducibility
+    set_random_seeds(42)
+    
     # Setup device
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
     logger.info(f"Using device: {device}")
@@ -190,14 +241,22 @@ def train_model(config: Config) -> None:
     train_loader, val_loader, _ = create_data_loaders(config)
     logger.info(f"Created data loaders: train={len(train_loader)}, val={len(val_loader)}")
     
-    # Create model
-    model = create_model(config)
-    model.to(device)
-    logger.info(f"Created model: {config.model_arch}")
+    # Build model
+    model = build_model(config)
     
-    # Create optimizer and criterion
-    optimizer = create_optimizer(model, config)
-    criterion = nn.MSELoss()
+    # Create optimizer
+    optimizer_name = config.optimizer.lower()
+    if optimizer_name == "adam":
+        optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
+    elif optimizer_name == "adamw":
+        optimizer = optim.AdamW(model.parameters(), lr=config.learning_rate, weight_decay=0.01)
+    elif optimizer_name == "sgd":
+        optimizer = optim.SGD(model.parameters(), lr=config.learning_rate, momentum=0.9)
+    else:
+        raise ValueError(f"Unsupported optimizer: {optimizer_name}")
+    
+    # Create loss function (masked cross-entropy)
+    criterion = MaskedCrossEntropyLoss(ignore_index=4)
     
     # Create scheduler
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -207,10 +266,22 @@ def train_model(config: Config) -> None:
     # Early stopping
     early_stopping = EarlyStopping(patience=config.patience)
     
-    # Initialize wandb (optional)
+    # Initialize wandb
     use_wandb = False
     try:
-        wandb.init(project="csi-predictor", config=vars(config))
+        wandb.init(
+            project="csi-predictor",
+            config={
+                "model_arch": config.model_arch,
+                "batch_size": config.batch_size,
+                "learning_rate": config.learning_rate,
+                "optimizer": config.optimizer,
+                "n_epochs": config.n_epochs,
+                "patience": config.patience,
+                "device": config.device,
+                "models_folder": config.models_folder
+            }
+        )
         use_wandb = True
         logger.info("Initialized Weights & Biases logging")
     except Exception as e:
@@ -218,6 +289,7 @@ def train_model(config: Config) -> None:
     
     # Training loop
     best_val_loss = float('inf')
+    best_val_f1 = 0.0
     
     for epoch in range(1, config.n_epochs + 1):
         logger.info(f"Starting epoch {epoch}/{config.n_epochs}")
@@ -230,31 +302,59 @@ def train_model(config: Config) -> None:
         
         # Update scheduler
         scheduler.step(val_metrics["loss"])
+        current_lr = optimizer.param_groups[0]["lr"]
         
         # Log metrics
-        logger.info(f"Epoch {epoch}: Train Loss: {train_metrics['loss']:.4f}, Val Loss: {val_metrics['loss']:.4f}")
+        logger.info(f"Epoch {epoch}:")
+        logger.info(f"  Train - Loss: {train_metrics['loss']:.4f}, F1 Macro: {train_metrics['f1_macro']:.4f}")
+        logger.info(f"  Val   - Loss: {val_metrics['loss']:.4f}, F1 Macro: {val_metrics['f1_macro']:.4f}")
+        logger.info(f"  Learning Rate: {current_lr:.6f}")
         
+        # Log to wandb
         if use_wandb:
-            wandb.log({
+            wandb_log = {
                 "epoch": epoch,
+                "learning_rate": current_lr,
                 "train_loss": train_metrics["loss"],
                 "val_loss": val_metrics["loss"],
-                "learning_rate": optimizer.param_groups[0]["lr"]
-            })
+                "train_f1_macro": train_metrics["f1_macro"],
+                "val_f1_macro": val_metrics["f1_macro"],
+                "train_f1_overall": train_metrics["f1_overall"],
+                "val_f1_overall": val_metrics["f1_overall"]
+            }
+            
+            # Add per-zone F1 scores
+            for i in range(6):
+                zone_name = f"zone_{i+1}"
+                wandb_log[f"train_f1_{zone_name}"] = train_metrics[f"f1_{zone_name}"]
+                wandb_log[f"val_f1_{zone_name}"] = val_metrics[f"f1_{zone_name}"]
+            
+            wandb.log(wandb_log)
         
         # Save best model
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]
-            save_path = Path(config.get_model_path("best_model"))
+            best_val_f1 = val_metrics["f1_macro"]
+            
+            # Create model name with timestamp
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            model_name = f"{config.model_arch} - {timestamp}"
+            
+            save_path = Path(config.get_model_path(model_name))
             save_path.parent.mkdir(parents=True, exist_ok=True)
+            
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': val_metrics["loss"],
-                'config': config
+                'val_f1_macro': val_metrics["f1_macro"],
+                'config': config,
+                'model_name': model_name
             }, save_path)
-            logger.info(f"Saved best model with val_loss: {val_metrics['loss']:.4f}")
+            
+            logger.info(f"Saved best model: {model_name}")
+            logger.info(f"  Val Loss: {val_metrics['loss']:.4f}, Val F1: {val_metrics['f1_macro']:.4f}")
         
         # Early stopping check
         if early_stopping(val_metrics["loss"]):
@@ -262,6 +362,29 @@ def train_model(config: Config) -> None:
             break
     
     logger.info("Training completed!")
+    logger.info(f"Best validation loss: {best_val_loss:.4f}")
+    logger.info(f"Best validation F1: {best_val_f1:.4f}")
     
     if use_wandb:
-        wandb.finish() 
+        wandb.finish()
+
+
+def main():
+    """Main function for CLI entry point."""
+    parser = argparse.ArgumentParser(description="Train CSI-Predictor model")
+    parser.add_argument("--ini", default="config.ini", help="Path to config.ini file")
+    
+    args = parser.parse_args()
+    
+    # Load configuration
+    config = get_config(ini_path=args.ini)
+    
+    # Copy configuration for reproducibility
+    copy_config_on_training_start()
+    
+    # Start training
+    train_model(config)
+
+
+if __name__ == "__main__":
+    main() 

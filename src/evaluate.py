@@ -3,20 +3,21 @@ Evaluation logic for CSI-Predictor.
 Handles model evaluation, metrics computation, and result analysis.
 """
 
+import argparse
 import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from loguru import logger
 from tqdm import tqdm
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
 from .data import create_data_loaders
-from .train import CSIModel
-from .config import Config
+from .models import CSIModel, build_model
+from .config import cfg, get_config
+from .metrics import compute_pytorch_f1_metrics, compute_accuracy
 
 
 def load_trained_model(model_path: str, device: torch.device) -> CSIModel:
@@ -40,7 +41,7 @@ def load_trained_model(model_path: str, device: torch.device) -> CSIModel:
     # Create model
     model = CSIModel(
         backbone_arch=config.model_arch,
-        num_zones=6,
+        n_classes_per_zone=5,  # Classification with 5 classes
         pretrained=False  # Don't need pretrained weights when loading checkpoint
     )
     
@@ -55,27 +56,45 @@ def load_trained_model(model_path: str, device: torch.device) -> CSIModel:
 
 def compute_zone_metrics(predictions: np.ndarray, targets: np.ndarray, zone_names: List[str]) -> Dict[str, Dict[str, float]]:
     """
-    Compute metrics for each CSI zone.
+    Compute metrics for each CSI zone (classification version).
     
     Args:
-        predictions: Predicted CSI scores [num_samples, num_zones]
-        targets: Ground truth CSI scores [num_samples, num_zones]
+        predictions: Predicted CSI class indices [num_samples, num_zones]
+        targets: Ground truth CSI class indices [num_samples, num_zones]
         zone_names: Names of CSI zones
         
     Returns:
         Dictionary of metrics per zone
     """
-    zone_metrics = {}
+    # Convert numpy arrays to PyTorch tensors
+    pred_tensor = torch.from_numpy(predictions)
+    target_tensor = torch.from_numpy(targets)
     
+    # Create dummy logits tensor for the PyTorch metrics function
+    # Shape: [num_samples, num_zones, num_classes]
+    batch_size, num_zones = pred_tensor.shape
+    num_classes = 5
+    
+    # Create one-hot style logits where the predicted class has highest value
+    logits = torch.zeros(batch_size, num_zones, num_classes)
+    for i in range(batch_size):
+        for j in range(num_zones):
+            pred_class = pred_tensor[i, j]
+            if pred_class < num_classes:  # Valid class
+                logits[i, j, pred_class] = 1.0
+    
+    # Use our PyTorch metrics
+    f1_metrics = compute_pytorch_f1_metrics(logits, target_tensor, ignore_index=4)
+    accuracy_metrics = compute_accuracy(logits, target_tensor, ignore_index=4)
+    
+    # Reorganize into per-zone format
+    zone_metrics = {}
     for i, zone_name in enumerate(zone_names):
-        zone_pred = predictions[:, i]
-        zone_target = targets[:, i]
-        
         zone_metrics[zone_name] = {
-            'mse': mean_squared_error(zone_target, zone_pred),
-            'rmse': np.sqrt(mean_squared_error(zone_target, zone_pred)),
-            'mae': mean_absolute_error(zone_target, zone_pred),
-            'r2': r2_score(zone_target, zone_pred)
+            'f1_macro': f1_metrics[f'f1_{zone_name}'],
+            'f1_weighted': f1_metrics[f'f1_{zone_name}'],  # Use same as macro for simplicity
+            'accuracy': accuracy_metrics[f'acc_{zone_name}'],
+            'valid_samples': int((targets[:, i] != 4).sum())
         }
     
     return zone_metrics
@@ -83,24 +102,40 @@ def compute_zone_metrics(predictions: np.ndarray, targets: np.ndarray, zone_name
 
 def compute_overall_metrics(predictions: np.ndarray, targets: np.ndarray) -> Dict[str, float]:
     """
-    Compute overall metrics across all zones.
+    Compute overall metrics across all zones (classification version).
     
     Args:
-        predictions: Predicted CSI scores [num_samples, num_zones]
-        targets: Ground truth CSI scores [num_samples, num_zones]
+        predictions: Predicted CSI class indices [num_samples, num_zones]
+        targets: Ground truth CSI class indices [num_samples, num_zones]
         
     Returns:
         Dictionary of overall metrics
     """
-    # Flatten predictions and targets
-    pred_flat = predictions.flatten()
-    target_flat = targets.flatten()
+    # Convert numpy arrays to PyTorch tensors
+    pred_tensor = torch.from_numpy(predictions)
+    target_tensor = torch.from_numpy(targets)
+    
+    # Create dummy logits tensor for the PyTorch metrics function
+    batch_size, num_zones = pred_tensor.shape
+    num_classes = 5
+    
+    # Create one-hot style logits where the predicted class has highest value
+    logits = torch.zeros(batch_size, num_zones, num_classes)
+    for i in range(batch_size):
+        for j in range(num_zones):
+            pred_class = pred_tensor[i, j]
+            if pred_class < num_classes:  # Valid class
+                logits[i, j, pred_class] = 1.0
+    
+    # Use our PyTorch metrics
+    f1_metrics = compute_pytorch_f1_metrics(logits, target_tensor, ignore_index=4)
+    accuracy_metrics = compute_accuracy(logits, target_tensor, ignore_index=4)
     
     return {
-        'overall_mse': mean_squared_error(target_flat, pred_flat),
-        'overall_rmse': np.sqrt(mean_squared_error(target_flat, pred_flat)),
-        'overall_mae': mean_absolute_error(target_flat, pred_flat),
-        'overall_r2': r2_score(target_flat, pred_flat)
+        'overall_f1_macro': f1_metrics['f1_overall'],
+        'overall_f1_weighted': f1_metrics['f1_overall'],  # Use same as macro for simplicity
+        'overall_accuracy': accuracy_metrics['acc_overall'],
+        'total_valid_samples': int((targets != 4).sum())
     }
 
 
@@ -132,15 +167,18 @@ def evaluate_model_on_loader(
             images, targets = images.to(device), targets.to(device)
             
             # Forward pass
-            outputs = model(images)
+            outputs = model(images)  # [batch_size, n_zones, n_classes]
             
             # Compute loss if criterion provided
             if criterion is not None:
                 loss = criterion(outputs, targets)
                 total_loss += loss.item()
             
+            # Convert logits to class predictions
+            pred_classes = torch.argmax(outputs, dim=-1)  # [batch_size, n_zones]
+            
             # Store predictions and targets
-            all_predictions.append(outputs.cpu().numpy())
+            all_predictions.append(pred_classes.cpu().numpy())
             all_targets.append(targets.cpu().numpy())
     
     # Concatenate all predictions and targets
@@ -182,7 +220,10 @@ def create_evaluation_report(
     report_lines.append("Overall Metrics:")
     report_lines.append("-" * 20)
     for metric, value in overall_metrics.items():
-        report_lines.append(f"{metric}: {value:.4f}")
+        if 'samples' in metric:
+            report_lines.append(f"{metric}: {value}")
+        else:
+            report_lines.append(f"{metric}: {value:.4f}")
     report_lines.append("")
     
     # Zone-specific metrics
@@ -191,12 +232,15 @@ def create_evaluation_report(
     
     # Create formatted table
     zone_names = list(zone_metrics.keys())
-    metrics_names = ['mse', 'rmse', 'mae', 'r2']
+    metrics_names = ['f1_macro', 'f1_weighted', 'accuracy', 'valid_samples']
     
     # Header row
     header = f"{'Zone':<12}"
     for metric in metrics_names:
-        header += f"{metric.upper():<8}"
+        if metric == 'valid_samples':
+            header += f"{'Valid':<8}"
+        else:
+            header += f"{metric.replace('_', ' ').title():<12}"
     report_lines.append(header)
     report_lines.append("-" * len(header))
     
@@ -205,7 +249,10 @@ def create_evaluation_report(
         row = f"{zone_name:<12}"
         for metric in metrics_names:
             value = zone_metrics[zone_name][metric]
-            row += f"{value:<8.4f}"
+            if metric == 'valid_samples':
+                row += f"{value:<8}"
+            else:
+                row += f"{value:<12.4f}"
         report_lines.append(row)
     
     report_lines.append("")
@@ -215,8 +262,17 @@ def create_evaluation_report(
     report_lines.append("-" * 20)
     report_lines.append(f"Number of samples: {len(predictions)}")
     report_lines.append(f"Number of zones: {predictions.shape[1]}")
-    report_lines.append(f"Prediction range: [{predictions.min():.2f}, {predictions.max():.2f}]")
-    report_lines.append(f"Target range: [{targets.min():.2f}, {targets.max():.2f}]")
+    report_lines.append(f"Prediction range: [{predictions.min()}, {predictions.max()}]")
+    report_lines.append(f"Target range: [{targets.min()}, {targets.max()}]")
+    
+    # Class distribution
+    report_lines.append("")
+    report_lines.append("Class Distribution:")
+    report_lines.append("-" * 20)
+    for class_idx in range(5):
+        pred_count = (predictions == class_idx).sum()
+        target_count = (targets == class_idx).sum()
+        report_lines.append(f"Class {class_idx}: Pred={pred_count}, True={target_count}")
     
     report = "\n".join(report_lines)
     
@@ -240,8 +296,8 @@ def save_predictions(
     Save predictions to CSV file.
     
     Args:
-        predictions: Predicted CSI scores
-        targets: Ground truth CSI scores
+        predictions: Predicted CSI class indices
+        targets: Ground truth CSI class indices
         output_path: Path to save CSV
         zone_names: Names of zones (optional)
     """
@@ -255,7 +311,7 @@ def save_predictions(
     for i, zone_name in enumerate(zone_names):
         data[f"pred_{zone_name}"] = predictions[:, i]
         data[f"true_{zone_name}"] = targets[:, i]
-        data[f"error_{zone_name}"] = predictions[:, i] - targets[:, i]
+        data[f"correct_{zone_name}"] = (predictions[:, i] == targets[:, i]).astype(int)
     
     df = pd.DataFrame(data)
     
@@ -265,7 +321,7 @@ def save_predictions(
     logger.info(f"Predictions saved to {output_path}")
 
 
-def evaluate_model(config: Config) -> None:
+def evaluate_model(config) -> None:
     """
     Main evaluation function.
     
@@ -276,18 +332,28 @@ def evaluate_model(config: Config) -> None:
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
     logger.info(f"Using device: {device}")
     
-    # Load model - use best_model as default
-    model_path = config.get_model_path("best_model")
-    if not Path(model_path).exists():
-        raise FileNotFoundError(f"Model not found: {model_path}")
+    # Find the latest model - look for timestamped models
+    models_folder = Path(config.models_folder)
+    if not models_folder.exists():
+        raise FileNotFoundError(f"Models folder not found: {models_folder}")
     
-    model = load_trained_model(model_path, device)
+    # Look for model files
+    model_files = list(models_folder.glob("*.pth"))
+    if not model_files:
+        raise FileNotFoundError(f"No model files found in {models_folder}")
+    
+    # Use the most recent model file
+    latest_model = max(model_files, key=lambda p: p.stat().st_mtime)
+    logger.info(f"Using model: {latest_model}")
+    
+    model = load_trained_model(str(latest_model), device)
     
     # Create data loaders
     _, val_loader, test_loader = create_data_loaders(config)
     
-    # Create loss function
-    criterion = nn.MSELoss()
+    # Import the loss function from train.py
+    from .train import MaskedCrossEntropyLoss
+    criterion = MaskedCrossEntropyLoss(ignore_index=4)
     
     # Zone names
     zone_names = ["zone_1", "zone_2", "zone_3", "zone_4", "zone_5", "zone_6"]
@@ -333,4 +399,22 @@ def evaluate_model(config: Config) -> None:
     print("\nTest Results:")
     print(test_report)
     
-    logger.info("Evaluation completed!") 
+    logger.info("Evaluation completed!")
+
+
+def main():
+    """Main function for CLI entry point."""
+    parser = argparse.ArgumentParser(description="Evaluate CSI-Predictor model")
+    parser.add_argument("--ini", default="config.ini", help="Path to config.ini file")
+    
+    args = parser.parse_args()
+    
+    # Load configuration
+    config = get_config(ini_path=args.ini)
+    
+    # Start evaluation
+    evaluate_model(config)
+
+
+if __name__ == "__main__":
+    main() 

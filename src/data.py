@@ -28,12 +28,12 @@ from torchvision import transforms
 from PIL import Image
 from pathlib import Path
 from typing import Tuple, Optional, List, Dict, Any, Union
-from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 from .config import Config, cfg
+from .data_split import pytorch_train_val_test_split
 
 
 # Model architecture to input size mapping
@@ -173,75 +173,44 @@ def split_data_stratified(
     
     print(f"Splitting data: train={train_size:.1%}, val={val_size:.1%}, test={test_size:.1%}")
     
-    # Create stratification key
-    strat_key = create_stratification_key(df)
-    
-    print(f"Created {len(strat_key.unique())} unique stratification groups")
-    
-    # Check if we have enough samples for stratification
-    min_group_size = strat_key.value_counts().min()
-    use_stratification = min_group_size >= 2 and len(df) >= 10
-    
-    if not use_stratification:
-        print("Warning: Too few samples for stratification, using random split")
+    # Use PyTorch implementation with CSI columns for stratification
+    try:
+        train_df, val_df, test_df = pytorch_train_val_test_split(
+            df,
+            train_size=train_size,
+            val_size=val_size,
+            test_size=test_size,
+            stratify_columns=CSI_COLUMNS,  # Stratify based on CSI columns
+            random_state=random_state
+        )
+        
+        return train_df, val_df, test_df
+        
+    except Exception as e:
+        print(f"Warning: Stratified split failed ({e}), using random split")
+        
+        # Fallback to random split using our PyTorch implementation
+        from .data_split import pytorch_train_test_split
         
         # First split: train vs (val + test)
-        train_df, temp_df = train_test_split(
+        train_df, temp_df = pytorch_train_test_split(
             df,
             test_size=val_size + test_size,
+            stratify_by=None,  # No stratification for fallback
             random_state=random_state
         )
         
-        # Second split: val vs test from temp_df
+        # Second split: val vs test
         val_prop = val_size / (val_size + test_size)
-        
-        val_df, test_df = train_test_split(
+        val_df, test_df = pytorch_train_test_split(
             temp_df,
             test_size=1 - val_prop,
-            random_state=random_state
+            stratify_by=None,
+            random_state=random_state + 1
         )
-    else:
-        try:
-            # First split: train vs (val + test)
-            train_df, temp_df = train_test_split(
-                df,
-                test_size=val_size + test_size,
-                stratify=strat_key,
-                random_state=random_state
-            )
-            
-            # Second split: val vs test from temp_df
-            # Recalculate proportions for the remaining data
-            val_prop = val_size / (val_size + test_size)
-            
-            # Create stratification key for temp data
-            temp_strat_key = create_stratification_key(temp_df)
-            
-            val_df, test_df = train_test_split(
-                temp_df,
-                test_size=1 - val_prop,
-                stratify=temp_strat_key,
-                random_state=random_state
-            )
-        except ValueError as e:
-            print(f"Warning: Stratified split failed ({e}), using random split")
-            # Fallback to random split
-            train_df, temp_df = train_test_split(
-                df,
-                test_size=val_size + test_size,
-                random_state=random_state
-            )
-            
-            val_prop = val_size / (val_size + test_size)
-            val_df, test_df = train_test_split(
-                temp_df,
-                test_size=1 - val_prop,
-                random_state=random_state
-            )
-    
-    print(f"Split completed: train={len(train_df)}, val={len(val_df)}, test={len(test_df)}")
-    
-    return train_df, val_df, test_df
+        
+        print(f"Split completed: train={len(train_df)}, val={len(val_df)}, test={len(test_df)}")
+        return train_df, val_df, test_df
 
 
 def get_default_transforms(phase: str = "train", model_arch: str = "resnet50") -> transforms.Compose:
@@ -357,6 +326,9 @@ class CSIDataset(Dataset):
             
         Returns:
             Tuple of (image_tensor, label_tensor)
+            
+        Note: Returns classification targets (class indices) for cross-entropy loss.
+        Label tensor shape: (6,) with values in {0,1,2,3,4} representing classes.
         """
         row = self.dataframe.iloc[idx]
         file_id = row['FileID']
@@ -379,11 +351,12 @@ class CSIDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         
-        # Extract CSI labels (6 zones)
+        # Extract CSI labels (6 zones) as classification targets
         labels = []
         for col in CSI_COLUMNS:
             labels.append(row[col])
         
+        # Convert to classification targets (already in range 0-4)
         label_tensor = torch.tensor(labels, dtype=torch.long)
         
         return image, label_tensor
