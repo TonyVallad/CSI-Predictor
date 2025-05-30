@@ -672,7 +672,7 @@ def create_debug_dataset(
 
 def make_run_name(cfg) -> str:
     """
-    Create a timestamped run name for experiments, similar to training pattern.
+    Create a timestamped run name for experiments.
     
     Args:
         cfg: Configuration object
@@ -681,9 +681,9 @@ def make_run_name(cfg) -> str:
         Formatted run name with timestamp
         
     Example:
-        ResNet50_20241201_143025
+        resnet50_2025-05-30_13-48-07
     """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     model_arch = cfg.model_arch.replace("-", "_").replace(" ", "_")
     return f"{model_arch}_{timestamp}"
 

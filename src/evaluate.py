@@ -155,6 +155,72 @@ def create_classification_report_per_zone(predictions: np.ndarray, targets: np.n
     return reports
 
 
+def save_confusion_matrix_graphs(
+    confusion_matrices: Dict[str, np.ndarray],
+    output_dir: str,
+    run_name: str,
+    split_name: str = "validation"
+) -> None:
+    """
+    Save confusion matrices as PNG graphs in organized folders.
+    
+    Args:
+        confusion_matrices: Dictionary of confusion matrices per zone
+        output_dir: Base output directory 
+        run_name: Experiment run name
+        split_name: Name of the data split (validation/test)
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from pathlib import Path
+    
+    # Create graphs directory structure
+    graphs_dir = Path(output_dir) / "graphs" / run_name
+    graphs_dir.mkdir(parents=True, exist_ok=True)
+    
+    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
+    
+    # Zone names with corrected left/right orientation for chest X-rays
+    # In chest X-rays viewed from front, patient's left lung appears on right side of image
+    zone_display_names = {
+        "right_sup": "Patient Right Superior",
+        "left_sup": "Patient Left Superior", 
+        "right_mid": "Patient Right Middle",
+        "left_mid": "Patient Left Middle",
+        "right_inf": "Patient Right Inferior",
+        "left_inf": "Patient Left Inferior"
+    }
+    
+    for zone_name, cm in confusion_matrices.items():
+        if cm.sum() > 0:  # Only create graphs for zones with data
+            plt.figure(figsize=(8, 6))
+            
+            # Create heatmap
+            sns.heatmap(
+                cm, 
+                annot=True, 
+                fmt='d', 
+                cmap='Blues',
+                xticklabels=class_names,
+                yticklabels=class_names,
+                cbar_kws={'label': 'Count'}
+            )
+            
+            display_name = zone_display_names.get(zone_name, zone_name.replace('_', ' ').title())
+            plt.title(f'Confusion Matrix - {display_name}\n({split_name.title()} Set)')
+            plt.xlabel('Predicted CSI Score')
+            plt.ylabel('True CSI Score')
+            plt.tight_layout()
+            
+            # Save graph
+            filename = f"{split_name}_{zone_name}_confusion_matrix.png"
+            save_path = graphs_dir / filename
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f"Saved confusion matrix graph: {save_path}")
+
+
 def log_to_wandb(
     val_metrics: Dict,
     test_metrics: Dict,
@@ -166,7 +232,7 @@ def log_to_wandb(
     model_path: str
 ) -> None:
     """
-    Log evaluation results to Weights & Biases.
+    Log evaluation results to Weights & Biases without console confusion matrices.
     
     Args:
         val_metrics: Validation metrics
@@ -204,9 +270,9 @@ def log_to_wandb(
             "test/accuracy": test_metrics["overall_accuracy"],
         })
         
-        # Log per-zone metrics
-        zone_names = ["right_sup", "left_sup", "right_mid", "left_mid", "right_inf", "left_inf"]
-        for zone in zone_names:
+        # Zone names with corrected orientation
+        corrected_zone_names = ["right_sup", "left_sup", "right_mid", "left_mid", "right_inf", "left_inf"]
+        for zone in corrected_zone_names:
             if zone in val_reports:
                 val_report = val_reports[zone]
                 if "accuracy" in val_report:
@@ -217,7 +283,7 @@ def log_to_wandb(
                 if "accuracy" in test_report:
                     wandb.log({f"test/{zone}/accuracy": test_report["accuracy"]})
         
-        # Log confusion matrices as heatmaps
+        # Log confusion matrices as heatmaps (WandB only, not console)
         for split, cms in [("val", val_confusion_matrices), ("test", test_confusion_matrices)]:
             for zone, cm in cms.items():
                 if cm.sum() > 0:  # Only log if there are samples
@@ -420,10 +486,11 @@ def create_evaluation_report(
     targets: np.ndarray,
     confusion_matrices: Dict[str, np.ndarray],
     classification_reports: Dict[str, Dict],
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    include_confusion_matrices: bool = True
 ) -> str:
     """
-    Create comprehensive evaluation report with confusion matrices and classification reports.
+    Create comprehensive evaluation report with optional confusion matrices.
     
     Args:
         zone_metrics: Metrics per zone
@@ -433,6 +500,7 @@ def create_evaluation_report(
         confusion_matrices: Confusion matrices per zone
         classification_reports: Classification reports per zone
         output_path: Path to save report (optional)
+        include_confusion_matrices: Whether to include confusion matrices in text output
         
     Returns:
         Report string
@@ -454,16 +522,26 @@ def create_evaluation_report(
             report_lines.append(f"{metric}: {value:.4f}")
     report_lines.append("")
     
-    # Zone-specific metrics
-    report_lines.append("🏥 Zone-specific Metrics:")
-    report_lines.append("-" * 25)
+    # Zone-specific metrics with corrected orientation labels
+    report_lines.append("🏥 Zone-specific Metrics (Corrected Orientation):")
+    report_lines.append("-" * 50)
+    
+    # Zone display names for chest X-rays (viewed from front)
+    zone_display_mapping = {
+        "right_sup": "Patient Right Superior",
+        "left_sup": "Patient Left Superior", 
+        "right_mid": "Patient Right Middle",
+        "left_mid": "Patient Left Middle",
+        "right_inf": "Patient Right Inferior",
+        "left_inf": "Patient Left Inferior"
+    }
     
     # Create formatted table
     zone_names = list(zone_metrics.keys())
     metrics_names = ['f1_macro', 'f1_weighted', 'accuracy', 'valid_samples']
     
     # Header row
-    header = f"{'Zone':<15}"
+    header = f"{'Zone':<25}"
     for metric in metrics_names:
         if metric == 'valid_samples':
             header += f"{'Valid':<8}"
@@ -472,9 +550,10 @@ def create_evaluation_report(
     report_lines.append(header)
     report_lines.append("-" * len(header))
     
-    # Data rows
+    # Data rows with corrected orientation
     for zone_name in zone_names:
-        row = f"{zone_name:<15}"
+        display_name = zone_display_mapping.get(zone_name, zone_name.replace('_', ' ').title())
+        row = f"{display_name:<25}"
         for metric in metrics_names:
             value = zone_metrics[zone_name][metric]
             if metric == 'valid_samples':
@@ -485,22 +564,24 @@ def create_evaluation_report(
     
     report_lines.append("")
     
-    # Confusion matrices per zone
-    report_lines.append("🔢 Confusion Matrices per Zone:")
-    report_lines.append("-" * 35)
-    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
-    
-    for zone_name, cm in confusion_matrices.items():
-        if cm.sum() > 0:  # Only show if there are samples
-            report_lines.append(f"\n{zone_name.replace('_', ' ').title()} Zone:")
-            report_lines.append("    " + "".join([f"{name:<8}" for name in class_names]))
-            for i, class_name in enumerate(class_names):
-                row_str = f"{class_name:<4}"
-                for j in range(5):
-                    row_str += f"{int(cm[i, j]):<8}"
-                report_lines.append(row_str)
-    
-    report_lines.append("")
+    # Confusion matrices per zone (optional)
+    if include_confusion_matrices:
+        report_lines.append("🔢 Confusion Matrices per Zone:")
+        report_lines.append("-" * 35)
+        class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
+        
+        for zone_name, cm in confusion_matrices.items():
+            if cm.sum() > 0:  # Only show if there are samples
+                display_name = zone_display_mapping.get(zone_name, zone_name.replace('_', ' ').title())
+                report_lines.append(f"\n{display_name}:")
+                report_lines.append("    " + "".join([f"{name:<8}" for name in class_names]))
+                for i, class_name in enumerate(class_names):
+                    row_str = f"{class_name:<4}"
+                    for j in range(5):
+                        row_str += f"{int(cm[i, j]):<8}"
+                    report_lines.append(row_str)
+        
+        report_lines.append("")
     
     # Classification reports per zone
     report_lines.append("📋 Detailed Classification Reports:")
@@ -508,7 +589,8 @@ def create_evaluation_report(
     
     for zone_name, report in classification_reports.items():
         if "accuracy" in report:  # Valid report
-            report_lines.append(f"\n{zone_name.replace('_', ' ').title()} Zone:")
+            display_name = zone_display_mapping.get(zone_name, zone_name.replace('_', ' ').title())
+            report_lines.append(f"\n{display_name}:")
             report_lines.append(f"Overall Accuracy: {report['accuracy']:.4f}")
             report_lines.append(f"Total Support: {report['total_support']}")
             
@@ -539,6 +621,7 @@ def create_evaluation_report(
     report_lines.append("")
     report_lines.append("📊 Class Distribution:")
     report_lines.append("-" * 20)
+    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
     for class_idx in range(5):
         pred_count = (predictions == class_idx).sum()
         target_count = (targets == class_idx).sum()
@@ -666,18 +749,22 @@ def evaluate_model(config) -> None:
     val_report = create_evaluation_report(
         val_zone_metrics, val_overall_metrics, val_predictions, val_targets,
         val_confusion_matrices, val_classification_reports,
-        output_dir / "validation_comprehensive_report.txt"
+        output_dir / "validation_comprehensive_report.txt", include_confusion_matrices=False
     )
     
     test_report = create_evaluation_report(
         test_zone_metrics, test_overall_metrics, test_predictions, test_targets,
         test_confusion_matrices, test_classification_reports,
-        output_dir / "test_comprehensive_report.txt"
+        output_dir / "test_comprehensive_report.txt", include_confusion_matrices=False
     )
     
     # Save predictions
     save_predictions(val_predictions, val_targets, output_dir / "validation_predictions.csv", zone_names)
     save_predictions(test_predictions, test_targets, output_dir / "test_predictions.csv", zone_names)
+    
+    # Save confusion matrix graphs
+    save_confusion_matrix_graphs(val_confusion_matrices, output_dir, make_run_name(config), "validation")
+    save_confusion_matrix_graphs(test_confusion_matrices, output_dir, make_run_name(config), "test")
     
     # Log to WandB
     logger.info("Logging results to Weights & Biases...")

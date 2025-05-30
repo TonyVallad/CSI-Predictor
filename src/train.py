@@ -21,7 +21,7 @@ from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
 from .models import build_model
 from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, log_config
-from .metrics import compute_pytorch_f1_metrics
+from .metrics import compute_pytorch_f1_metrics, compute_precision_recall_metrics
 
 
 def set_random_seeds(seed: int = 42) -> None:
@@ -100,6 +100,20 @@ def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict
     return compute_pytorch_f1_metrics(predictions, targets, ignore_index=4)
 
 
+def compute_precision_recall(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, float]:
+    """
+    Compute precision and recall metrics for CSI prediction using PyTorch.
+    
+    Args:
+        predictions: Model predictions [batch_size, n_zones, n_classes]
+        targets: Ground truth labels [batch_size, n_zones]
+        
+    Returns:
+        Dictionary with precision and recall metrics
+    """
+    return compute_precision_recall_metrics(predictions, targets, ignore_index=4)
+
+
 def train_epoch(
     model: nn.Module,
     train_loader: DataLoader,
@@ -156,10 +170,12 @@ def train_epoch(
     all_pred_tensor = torch.cat(all_predictions, dim=0)
     all_target_tensor = torch.cat(all_targets, dim=0)
     f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
+    pr_metrics = compute_precision_recall(all_pred_tensor, all_target_tensor)
     
     # Combine metrics
     train_metrics = metrics.get_averages()
     train_metrics.update(f1_metrics)
+    train_metrics.update(pr_metrics)
     
     return train_metrics
 
@@ -207,10 +223,12 @@ def validate_epoch(
     all_pred_tensor = torch.cat(all_predictions, dim=0)
     all_target_tensor = torch.cat(all_targets, dim=0)
     f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
+    pr_metrics = compute_precision_recall(all_pred_tensor, all_target_tensor)
     
     # Combine metrics
     val_metrics = metrics.get_averages()
     val_metrics.update(f1_metrics)
+    val_metrics.update(pr_metrics)
     
     return val_metrics
 
@@ -264,7 +282,7 @@ def train_model(config) -> None:
     # Initialize wandb
     use_wandb = False
     try:
-        run_name = f"train_{make_run_name(config)}"
+        run_name = make_run_name(config)
         wandb.init(
             project="csi-predictor",
             name=run_name,
@@ -304,8 +322,8 @@ def train_model(config) -> None:
         
         # Log metrics
         logger.info(f"Epoch {epoch}:")
-        logger.info(f"  Train - Loss: {train_metrics['loss']:.4f}, F1 Macro: {train_metrics['f1_macro']:.4f}")
-        logger.info(f"  Val   - Loss: {val_metrics['loss']:.4f}, F1 Macro: {val_metrics['f1_macro']:.4f}")
+        logger.info(f"  Train - Loss: {train_metrics['loss']:.4f}, F1: {train_metrics['f1_macro']:.4f}, Precision: {train_metrics['precision_macro']:.4f}, Recall: {train_metrics['recall_macro']:.4f}")
+        logger.info(f"  Val   - Loss: {val_metrics['loss']:.4f}, F1: {val_metrics['f1_macro']:.4f}, Precision: {val_metrics['precision_macro']:.4f}, Recall: {val_metrics['recall_macro']:.4f}")
         logger.info(f"  Learning Rate: {current_lr:.6f}")
         
         # Log to wandb
@@ -313,19 +331,35 @@ def train_model(config) -> None:
             wandb_log = {
                 "epoch": epoch,
                 "learning_rate": current_lr,
+                # Loss metrics
                 "train_loss": train_metrics["loss"],
                 "val_loss": val_metrics["loss"],
+                # F1 metrics
                 "train_f1_macro": train_metrics["f1_macro"],
                 "val_f1_macro": val_metrics["f1_macro"],
                 "train_f1_overall": train_metrics["f1_overall"],
-                "val_f1_overall": val_metrics["f1_overall"]
+                "val_f1_overall": val_metrics["f1_overall"],
+                # Precision metrics
+                "train_precision_macro": train_metrics["precision_macro"],
+                "val_precision_macro": val_metrics["precision_macro"],
+                "train_precision_overall": train_metrics["precision_overall"],
+                "val_precision_overall": val_metrics["precision_overall"],
+                # Recall metrics
+                "train_recall_macro": train_metrics["recall_macro"],
+                "val_recall_macro": val_metrics["recall_macro"],
+                "train_recall_overall": train_metrics["recall_overall"],
+                "val_recall_overall": val_metrics["recall_overall"]
             }
             
-            # Add per-zone F1 scores
+            # Add per-zone metrics
             for i in range(6):
                 zone_name = f"zone_{i+1}"
                 wandb_log[f"train_f1_{zone_name}"] = train_metrics[f"f1_{zone_name}"]
                 wandb_log[f"val_f1_{zone_name}"] = val_metrics[f"f1_{zone_name}"]
+                wandb_log[f"train_precision_{zone_name}"] = train_metrics[f"precision_{zone_name}"]
+                wandb_log[f"val_precision_{zone_name}"] = val_metrics[f"precision_{zone_name}"]
+                wandb_log[f"train_recall_{zone_name}"] = train_metrics[f"recall_{zone_name}"]
+                wandb_log[f"val_recall_{zone_name}"] = val_metrics[f"recall_{zone_name}"]
             
             wandb.log(wandb_log)
         
