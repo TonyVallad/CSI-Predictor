@@ -174,4 +174,4 @@ cython_debug/
 .pypirc
 
 # Config files
-config.ini
+*.ini
