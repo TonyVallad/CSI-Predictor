@@ -61,7 +61,12 @@ class WeightedCSILoss(nn.Module):
         # Weights: [Normal, Mild, Moderate, Severe, Unknown]
         # Classes 0-3 get full weight, class 4 gets reduced weight
         weights = torch.tensor([1.0, 1.0, 1.0, 1.0, unknown_weight])
-        self.cross_entropy = nn.CrossEntropyLoss(weight=weights)
+        
+        # Register weights as buffer so they move to device automatically
+        self.register_buffer('class_weights', weights)
+        
+        # Initialize CrossEntropyLoss without weights initially
+        self.cross_entropy = nn.CrossEntropyLoss(reduction='mean')
         
         logger.info(f"Initialized WeightedCSILoss with unknown_weight={unknown_weight}")
     
@@ -82,7 +87,9 @@ class WeightedCSILoss(nn.Module):
         predictions_flat = predictions.view(-1, n_classes)
         targets_flat = targets.view(-1)
         
-        return self.cross_entropy(predictions_flat, targets_flat)
+        # Compute weighted cross-entropy using F.cross_entropy with weights
+        import torch.nn.functional as F
+        return F.cross_entropy(predictions_flat, targets_flat, weight=self.class_weights)
 
 
 def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, float]:
