@@ -726,8 +726,8 @@ def evaluate_model(config) -> None:
     _, val_loader, test_loader = create_data_loaders(config)
     
     # Import the loss function from train.py
-    from .train import MaskedCrossEntropyLoss
-    criterion = MaskedCrossEntropyLoss(ignore_index=4)
+    from .train import WeightedCSILoss
+    criterion = WeightedCSILoss(unknown_weight=0.3)
     
     # Zone names
     zone_names = ["right_sup", "left_sup", "right_mid", "left_mid", "right_inf", "left_inf"]

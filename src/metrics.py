@@ -69,14 +69,14 @@ def compute_f1_from_confusion_matrix(cm: torch.Tensor, average: str = 'macro') -
         raise ValueError(f"Unsupported average method: {average}")
 
 
-def compute_pytorch_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor, ignore_index: int = 4) -> Dict[str, float]:
+def compute_pytorch_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor, ignore_index: Optional[int] = 4) -> Dict[str, float]:
     """
     Compute F1 scores for CSI prediction using pure PyTorch.
     
     Args:
         predictions: Model predictions [batch_size, n_zones, n_classes]
         targets: Ground truth labels [batch_size, n_zones]
-        ignore_index: Class index to ignore (default: 4 for ungradable)
+        ignore_index: Class index to ignore (default: 4 for ungradable, None to include all classes)
         
     Returns:
         Dictionary with F1 metrics
@@ -85,7 +85,11 @@ def compute_pytorch_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor,
     pred_classes = torch.argmax(predictions, dim=-1)  # [batch_size, n_zones]
     
     # Create mask for valid targets (not equal to ignore_index)
-    mask = (targets != ignore_index)
+    if ignore_index is not None:
+        mask = (targets != ignore_index)
+    else:
+        # Include all samples when ignore_index is None
+        mask = torch.ones_like(targets, dtype=torch.bool)
     
     f1_metrics = {}
     zone_names = ["zone_1", "zone_2", "zone_3", "zone_4", "zone_5", "zone_6"]
@@ -127,14 +131,14 @@ def compute_pytorch_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor,
     return f1_metrics
 
 
-def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor, ignore_index: int = 4) -> Dict[str, float]:
+def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor, ignore_index: Optional[int] = 4) -> Dict[str, float]:
     """
     Compute accuracy metrics using PyTorch.
     
     Args:
         predictions: Model predictions [batch_size, n_zones, n_classes]
         targets: Ground truth labels [batch_size, n_zones]
-        ignore_index: Class index to ignore
+        ignore_index: Class index to ignore (None to include all classes)
         
     Returns:
         Dictionary with accuracy metrics
@@ -143,7 +147,11 @@ def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor, ignore_in
     pred_classes = torch.argmax(predictions, dim=-1)
     
     # Create mask for valid targets
-    mask = (targets != ignore_index)
+    if ignore_index is not None:
+        mask = (targets != ignore_index)
+    else:
+        # Include all samples when ignore_index is None
+        mask = torch.ones_like(targets, dtype=torch.bool)
     
     accuracy_metrics = {}
     zone_names = ["zone_1", "zone_2", "zone_3", "zone_4", "zone_5", "zone_6"]
@@ -176,14 +184,14 @@ def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor, ignore_in
     return accuracy_metrics
 
 
-def compute_precision_recall_metrics(predictions: torch.Tensor, targets: torch.Tensor, ignore_index: int = 4) -> Dict[str, float]:
+def compute_precision_recall_metrics(predictions: torch.Tensor, targets: torch.Tensor, ignore_index: Optional[int] = 4) -> Dict[str, float]:
     """
     Compute precision and recall metrics using PyTorch.
     
     Args:
         predictions: Model predictions [batch_size, n_zones, n_classes]
         targets: Ground truth labels [batch_size, n_zones]
-        ignore_index: Class index to ignore
+        ignore_index: Class index to ignore (None to include all classes)
         
     Returns:
         Dictionary with precision and recall metrics
@@ -192,7 +200,11 @@ def compute_precision_recall_metrics(predictions: torch.Tensor, targets: torch.T
     pred_classes = torch.argmax(predictions, dim=-1)
     
     # Create mask for valid targets
-    mask = (targets != ignore_index)
+    if ignore_index is not None:
+        mask = (targets != ignore_index)
+    else:
+        # Include all samples when ignore_index is None
+        mask = torch.ones_like(targets, dtype=torch.bool)
     
     metrics = {}
     zone_names = ["zone_1", "zone_2", "zone_3", "zone_4", "zone_5", "zone_6"]

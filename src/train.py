@@ -35,28 +35,39 @@ def set_random_seeds(seed: int = 42) -> None:
     logger.info(f"Set random seeds to {seed}")
 
 
-class MaskedCrossEntropyLoss(nn.Module):
+class WeightedCSILoss(nn.Module):
     """
-    Masked Cross-Entropy Loss that ignores positions where ground-truth == 4.
+    Weighted Cross-Entropy Loss that reduces importance of unknown class
+    but still learns to predict it.
     
-    This handles "ungradable" or "unknown" CSI zones by not including them
-    in the loss computation.
+    This treats "ungradable" or "unknown" CSI zones (class 4) as a valid 
+    prediction target rather than ignoring it, but gives it reduced weight
+    to emphasize learning the clear CSI classifications (0-3).
     """
     
-    def __init__(self, ignore_index: int = 4):
+    def __init__(self, unknown_weight: float = 0.3):
         """
-        Initialize masked cross-entropy loss.
+        Initialize weighted cross-entropy loss.
         
         Args:
-            ignore_index: Class index to ignore (default: 4 for ungradable)
+            unknown_weight: Weight for unknown class (default: 0.3)
+                          - 1.0 = equal importance with other classes
+                          - 0.5 = half importance  
+                          - 0.1 = very low importance
         """
         super().__init__()
-        self.ignore_index = ignore_index
-        self.cross_entropy = nn.CrossEntropyLoss(ignore_index=ignore_index, reduction='none')
+        self.unknown_weight = unknown_weight
+        
+        # Weights: [Normal, Mild, Moderate, Severe, Unknown]
+        # Classes 0-3 get full weight, class 4 gets reduced weight
+        weights = torch.tensor([1.0, 1.0, 1.0, 1.0, unknown_weight])
+        self.cross_entropy = nn.CrossEntropyLoss(weight=weights)
+        
+        logger.info(f"Initialized WeightedCSILoss with unknown_weight={unknown_weight}")
     
     def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """
-        Compute masked cross-entropy loss.
+        Compute weighted cross-entropy loss.
         
         Args:
             predictions: Model predictions [batch_size, n_zones, n_classes]
@@ -71,19 +82,7 @@ class MaskedCrossEntropyLoss(nn.Module):
         predictions_flat = predictions.view(-1, n_classes)
         targets_flat = targets.view(-1)
         
-        # Compute loss per sample
-        losses = self.cross_entropy(predictions_flat, targets_flat)
-        
-        # Create mask for valid (non-ignored) targets
-        mask = (targets_flat != self.ignore_index)
-        
-        # Apply mask and compute mean only over valid samples
-        if mask.sum() > 0:
-            masked_losses = losses[mask]
-            return masked_losses.mean()
-        else:
-            # If all samples are masked, return zero loss
-            return torch.tensor(0.0, device=predictions.device, requires_grad=True)
+        return self.cross_entropy(predictions_flat, targets_flat)
 
 
 def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, float]:
@@ -97,7 +96,8 @@ def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict
     Returns:
         Dictionary with F1 metrics
     """
-    return compute_pytorch_f1_metrics(predictions, targets, ignore_index=4)
+    # Note: Now we include all classes (0-4) in F1 computation since we're learning class 4
+    return compute_pytorch_f1_metrics(predictions, targets, ignore_index=None)
 
 
 def compute_precision_recall(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, float]:
@@ -111,7 +111,8 @@ def compute_precision_recall(predictions: torch.Tensor, targets: torch.Tensor) -
     Returns:
         Dictionary with precision and recall metrics
     """
-    return compute_precision_recall_metrics(predictions, targets, ignore_index=4)
+    # Note: Now we include all classes (0-4) in precision/recall computation
+    return compute_precision_recall_metrics(predictions, targets, ignore_index=None)
 
 
 def train_epoch(
@@ -268,8 +269,8 @@ def train_model(config) -> None:
     else:
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
     
-    # Create loss function (masked cross-entropy)
-    criterion = MaskedCrossEntropyLoss(ignore_index=4)
+    # Create loss function (weighted cross-entropy)
+    criterion = WeightedCSILoss(unknown_weight=0.3)  # 30% weight for unknown class
     
     # Create scheduler
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
