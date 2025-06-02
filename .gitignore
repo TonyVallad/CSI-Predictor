@@ -181,3 +181,6 @@ wandb/
 
 # Models
 models/
+
+# Graphs
+graphs/
