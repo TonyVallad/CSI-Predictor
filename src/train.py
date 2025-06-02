@@ -278,6 +278,7 @@ def train_model(config) -> None:
     
     # Create loss function (weighted cross-entropy)
     criterion = WeightedCSILoss(unknown_weight=0.3)  # 30% weight for unknown class
+    criterion = criterion.to(device)  # Move criterion to same device as model
     
     # Create scheduler
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
