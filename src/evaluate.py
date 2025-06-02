@@ -728,6 +728,7 @@ def evaluate_model(config) -> None:
     # Import the loss function from train.py
     from .train import WeightedCSILoss
     criterion = WeightedCSILoss(unknown_weight=0.3)
+    criterion = criterion.to(device)  # Move criterion to same device as model
     
     # Zone names
     zone_names = ["right_sup", "left_sup", "right_mid", "left_mid", "right_inf", "left_inf"]
