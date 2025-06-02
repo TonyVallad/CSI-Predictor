@@ -16,12 +16,23 @@ from src.evaluate import evaluate_model
 
 
 def main():
-    """Main function to run training and/or evaluation."""
+    """Main function to run training, evaluation, and/or hyperparameter optimization."""
     parser = argparse.ArgumentParser(description="CSI-Predictor: Predict 6-zone CSI scores on chest X-rays")
-    parser.add_argument("--mode", choices=["train", "eval", "both"], default="both",
-                        help="Run mode: train, eval, or both")
+    parser.add_argument("--mode", choices=["train", "eval", "both", "hyperopt", "train-optimized"], default="both",
+                        help="Run mode: train, eval, both, hyperopt (hyperparameter optimization), or train-optimized")
     parser.add_argument("--config", default="config.ini", help="Path to config.ini file")
     parser.add_argument("--env", default=".env", help="Path to .env file")
+    
+    # Hyperparameter optimization specific arguments
+    parser.add_argument("--study-name", default="csi_optimization", help="Name of the Optuna study")
+    parser.add_argument("--n-trials", type=int, default=50, help="Number of trials for hyperparameter optimization")
+    parser.add_argument("--max-epochs", type=int, default=30, help="Maximum epochs per trial during optimization")
+    parser.add_argument("--sampler", default="tpe", choices=['tpe', 'random', 'cmaes'], help="Optuna sampler algorithm")
+    parser.add_argument("--pruner", default="median", choices=['median', 'successive_halving', 'none'], help="Optuna pruner algorithm")
+    parser.add_argument("--wandb-project", help="WandB project name for hyperopt logging")
+    
+    # Train with optimized hyperparameters
+    parser.add_argument("--hyperparams", help="Path to JSON file with best hyperparameters (for train-optimized mode)")
     
     args = parser.parse_args()
     
@@ -43,7 +54,49 @@ def main():
     logger.info(f"  Models Folder: {cfg.models_folder}")
     logger.info(f"  Model Path: {cfg.get_model_path('best_model')}")
     
-    if args.mode in ["train", "both"]:
+    if args.mode == "hyperopt":
+        logger.info("Starting hyperparameter optimization...")
+        from src.hyperopt import optimize_hyperparameters
+        
+        study = optimize_hyperparameters(
+            study_name=args.study_name,
+            n_trials=args.n_trials,
+            max_epochs=args.max_epochs,
+            config_path=args.config,
+            sampler=args.sampler,
+            pruner=args.pruner,
+            wandb_project=args.wandb_project
+        )
+        logger.info("Hyperparameter optimization completed.")
+        
+        # Print recommended next steps
+        print(f"\n{'='*80}")
+        print("🎯 NEXT STEPS:")
+        print("="*80)
+        print("1. Review the optimization results above")
+        print("2. Train the final model with optimized hyperparameters:")
+        print(f"   python main.py --mode train-optimized --hyperparams models/hyperopt/{args.study_name}_best_params.json")
+        print("3. Or use the train_optimized script directly:")
+        print(f"   python -m src.train_optimized --hyperparams models/hyperopt/{args.study_name}_best_params.json")
+        
+    elif args.mode == "train-optimized":
+        if not args.hyperparams:
+            logger.error("--hyperparams argument required for train-optimized mode")
+            logger.info("Run hyperparameter optimization first:")
+            logger.info(f"  python main.py --mode hyperopt --study-name {args.study_name} --n-trials {args.n_trials}")
+            return
+        
+        logger.info("Training with optimized hyperparameters...")
+        from src.train_optimized import train_with_optimized_hyperparameters
+        
+        train_with_optimized_hyperparameters(
+            hyperparams_path=args.hyperparams,
+            config_path=args.config,
+            full_epochs=True
+        )
+        logger.info("Training with optimized hyperparameters completed.")
+        
+    elif args.mode in ["train", "both"]:
         logger.info("Starting training...")
         # Copy configuration with timestamp for reproducibility
         copy_config_on_training_start()

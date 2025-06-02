@@ -170,6 +170,51 @@ python -m src.evaluate --ini custom_config.ini
 # - Save predictions and metrics to files
 ```
 
+### Hyperparameter Optimization
+
+Automated hyperparameter optimization using [Optuna](https://optuna.readthedocs.io/) with Bayesian optimization:
+
+```bash
+# Quick optimization (50 trials)
+python main.py --mode hyperopt --n-trials 50
+
+# Advanced optimization with custom settings
+python main.py --mode hyperopt \
+    --study-name "csi_advanced_optimization" \
+    --n-trials 100 \
+    --max-epochs 30 \
+    --sampler tpe \
+    --pruner median \
+    --wandb-project "csi-hyperopt"
+
+# Train final model with best hyperparameters
+python main.py --mode train-optimized \
+    --hyperparams models/hyperopt/csi_optimization_best_params.json
+```
+
+**Optimized Hyperparameters:**
+- **Model Architecture**: ResNet18/34/50/101, DenseNet121/169
+- **Optimizer**: Adam, AdamW, SGD with weight decay and momentum
+- **Learning Rate**: 1e-5 to 1e-1 (log scale)
+- **Batch Size**: 16, 32, 64, 128
+- **Loss Function**: WeightedCSILoss unknown_weight (0.1 to 1.0)
+- **Early Stopping**: Patience (5 to 20 epochs)
+
+**Optimization Features:**
+- **Bayesian Optimization**: TPE sampler for intelligent parameter search
+- **Early Pruning**: Automatically stops poor trials to save computation
+- **WandB Integration**: Real-time monitoring and parameter importance analysis
+- **Resumable Studies**: Continue optimization across sessions
+- **Visualization**: Interactive plots for optimization history and parameter relationships
+
+**Results:**
+After optimization, you get:
+- `models/hyperopt/study_name_best_params.json`: Best hyperparameters
+- Interactive HTML plots: optimization history, parameter importance, parallel coordinates
+- WandB dashboard with detailed trial analysis
+
+See `docs/hyperparameter_optimization.md` for detailed documentation.
+
 ### Advanced Usage Examples
 
 **Quick Model Testing:**
