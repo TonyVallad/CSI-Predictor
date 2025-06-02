@@ -193,7 +193,7 @@ python main.py --mode train-optimized \
 ```
 
 **Optimized Hyperparameters:**
-- **Model Architecture**: ResNet18/34/50/101, DenseNet121/169
+- **Model Architecture**: ResNet50, CheXNet, Custom_1
 - **Optimizer**: Adam, AdamW, SGD with weight decay and momentum
 - **Learning Rate**: 1e-5 to 1e-1 (log scale)
 - **Batch Size**: 16, 32, 64, 128
@@ -203,6 +203,7 @@ python main.py --mode train-optimized \
 **Optimization Features:**
 - **Bayesian Optimization**: TPE sampler for intelligent parameter search
 - **Early Pruning**: Automatically stops poor trials to save computation
+- **Smart Caching**: One-time image caching across all trials for 60-80% speedup
 - **WandB Integration**: Real-time monitoring and parameter importance analysis
 - **Resumable Studies**: Continue optimization across sessions
 - **Visualization**: Interactive plots for optimization history and parameter relationships

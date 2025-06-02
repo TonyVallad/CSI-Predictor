@@ -33,6 +33,10 @@ from .train import WeightedCSILoss, train_epoch, validate_epoch
 from .utils import EarlyStopping, MetricsTracker, logger, seed_everything
 
 
+# Global cache for data loaders to avoid re-caching images for every trial
+_GLOBAL_DATA_CACHE = {}
+
+
 class OptunaPruningCallback:
     """
     Callback for Optuna pruning integration during training.
@@ -75,6 +79,93 @@ class OptunaPruningCallback:
         return False
 
 
+def get_cached_data_loaders(config: Config) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """
+    Get cached data loaders to avoid re-caching images for every trial.
+    
+    Args:
+        config: Configuration object
+        
+    Returns:
+        Tuple of (train_loader, val_loader, test_loader)
+    """
+    global _GLOBAL_DATA_CACHE
+    
+    # Create cache key based on data configuration (but not batch size)
+    cache_key = (
+        config.data_dir,
+        config.csv_dir,
+        config.labels_csv,
+        config.load_data_to_memory
+    )
+    
+    # Check if we have cached datasets
+    if cache_key not in _GLOBAL_DATA_CACHE:
+        logger.info("Creating and caching datasets (this will only happen once)...")
+        
+        # Create data loaders with a standard batch size first
+        temp_config = Config(
+            # Copy all values but use standard batch size
+            device=config.device,
+            load_data_to_memory=config.load_data_to_memory,
+            data_source=config.data_source,
+            data_dir=config.data_dir,
+            models_dir=config.models_dir,
+            csv_dir=config.csv_dir,
+            ini_dir=config.ini_dir,
+            graph_dir=config.graph_dir,
+            labels_csv=config.labels_csv,
+            labels_csv_separator=config.labels_csv_separator,
+            model_arch=config.model_arch,
+            optimizer=config.optimizer,
+            learning_rate=config.learning_rate,
+            batch_size=32,  # Use standard batch size for caching
+            patience=config.patience,
+            n_epochs=config.n_epochs,
+            _env_vars=config._env_vars.copy(),
+            _ini_vars=config._ini_vars.copy(),
+            _missing_keys=config._missing_keys.copy()
+        )
+        
+        train_loader, val_loader, test_loader = create_data_loaders(temp_config)
+        
+        # Cache the underlying datasets (not the loaders)
+        _GLOBAL_DATA_CACHE[cache_key] = {
+            'train_dataset': train_loader.dataset,
+            'val_dataset': val_loader.dataset, 
+            'test_dataset': test_loader.dataset
+        }
+        
+        logger.info("Datasets cached successfully!")
+    
+    # Get cached datasets
+    cached_data = _GLOBAL_DATA_CACHE[cache_key]
+    
+    # Create new data loaders with the current batch size
+    train_loader = DataLoader(
+        cached_data['train_dataset'],
+        batch_size=config.batch_size,
+        shuffle=True,
+        num_workers=0  # Use 0 to avoid multiprocessing issues
+    )
+    
+    val_loader = DataLoader(
+        cached_data['val_dataset'],
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=0
+    )
+    
+    test_loader = DataLoader(
+        cached_data['test_dataset'],
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=0
+    )
+    
+    return train_loader, val_loader, test_loader
+
+
 def create_optuna_config(trial: optuna.trial.Trial, base_config: Config) -> Config:
     """
     Create configuration with Optuna-suggested hyperparameters.
@@ -86,10 +177,10 @@ def create_optuna_config(trial: optuna.trial.Trial, base_config: Config) -> Conf
     Returns:
         Modified configuration with suggested hyperparameters
     """
-    # Model architecture optimization
+    # Model architecture optimization - using only available architectures
     model_arch = trial.suggest_categorical(
         'model_arch', 
-        ['resnet18', 'resnet34', 'resnet50', 'resnet101', 'densenet121', 'densenet169']
+        ['ResNet50', 'CheXNet', 'Custom_1']  # Only use actually available ones
     )
     
     # Optimizer hyperparameters
@@ -187,8 +278,8 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
         # Setup device
         device = torch.device(config.device if torch.cuda.is_available() else "cpu")
         
-        # Create data loaders with suggested batch size
-        train_loader, val_loader, _ = create_data_loaders(config)
+        # Get cached data loaders (this avoids re-caching images)
+        train_loader, val_loader, _ = get_cached_data_loaders(config)
         
         # Build model with suggested architecture
         model = build_model(config)
@@ -220,8 +311,8 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
             optimizer, mode='max', patience=5, factor=0.5, verbose=False
         )
         
-        # Early stopping
-        early_stopping = EarlyStopping(patience=config.patience, monitor='f1_macro', mode='max')
+        # Early stopping - fix the parameter usage
+        early_stopping = EarlyStopping(patience=config.patience, min_delta=0.001)
         
         # Initialize pruning callback
         pruning_callback = OptunaPruningCallback(trial, monitor='val_f1_macro')
@@ -247,8 +338,9 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
             if val_metrics["f1_macro"] > best_val_f1:
                 best_val_f1 = val_metrics["f1_macro"]
             
-            # Early stopping check
-            if early_stopping(val_metrics["f1_macro"]):
+            # Early stopping check - use validation loss (lower is better)
+            val_loss = val_metrics.get("loss", float('inf'))
+            if early_stopping(val_loss, model):
                 logger.info(f"Early stopping triggered at epoch {epoch}")
                 break
         
@@ -350,6 +442,13 @@ def save_best_hyperparameters(study: optuna.Study, output_path: str) -> None:
     logger.info(f"Best parameters: {best_params}")
 
 
+def clear_data_cache():
+    """Clear the global data cache."""
+    global _GLOBAL_DATA_CACHE
+    _GLOBAL_DATA_CACHE.clear()
+    logger.info("Data cache cleared")
+
+
 def optimize_hyperparameters(
     study_name: str = "csi_optimization",
     n_trials: int = 100,
@@ -378,6 +477,9 @@ def optimize_hyperparameters(
     """
     # Load base configuration
     base_config = get_config(ini_path=config_path)
+    
+    # Clear any existing cache
+    clear_data_cache()
     
     # Create study
     study = create_study(
@@ -409,6 +511,7 @@ def optimize_hyperparameters(
     logger.info(f"Study name: {study_name}")
     logger.info(f"Max epochs per trial: {max_epochs}")
     logger.info(f"Sampler: {sampler}, Pruner: {pruner}")
+    logger.info(f"Available model architectures: ResNet50, CheXNet, Custom_1")
     
     # Optimize
     callbacks = [wandb_callback] if wandb_callback else None

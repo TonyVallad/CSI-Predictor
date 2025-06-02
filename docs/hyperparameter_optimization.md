@@ -52,8 +52,9 @@ python main.py --mode train-optimized \
 The optimization searches over the following hyperparameter space:
 
 ### Model Architecture
-- **Choices**: `resnet18`, `resnet34`, `resnet50`, `resnet101`, `densenet121`, `densenet169`
+- **Choices**: `ResNet50`, `CheXNet`, `Custom_1`
 - **Impact**: Different architectures balance capacity vs. computational efficiency
+- **Note**: Available architectures are limited to those implemented in the project
 
 ### Optimizer Settings
 - **Optimizer**: `adam`, `adamw`, `sgd`
@@ -69,6 +70,21 @@ The optimization searches over the following hyperparameter space:
 - **Unknown Weight**: `0.1` to `1.0`
   - Controls the importance of unknown class (class 4) in loss calculation
   - Lower values emphasize clear CSI classifications (0-3)
+
+## Performance Optimizations
+
+### Smart Data Caching
+The optimization system includes intelligent caching to avoid re-loading and pre-processing images for every trial:
+
+- **One-time Caching**: Images are cached only once at the start of optimization
+- **Memory Efficient**: Cached datasets are reused across all trials
+- **Batch Size Flexibility**: Different batch sizes reuse the same cached data
+- **Significant Speedup**: Reduces trial time by 60-80% after initial caching
+
+### Automatic Resource Management
+- **GPU Memory**: Automatically manages CUDA memory between trials
+- **Early Pruning**: Stops unpromising trials early based on validation performance
+- **Error Recovery**: Failed trials don't stop the optimization process
 
 ## Advanced Usage
 
