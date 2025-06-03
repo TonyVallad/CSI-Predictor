@@ -49,7 +49,6 @@ def main():
     # Check if we can import the project modules
     print("3. Checking project structure...")
     try:
-        import sys
         import os
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         
