@@ -45,13 +45,13 @@ class OptunaPruningCallback:
     saving computational resources for more promising hyperparameter combinations.
     """
     
-    def __init__(self, trial: optuna.trial.Trial, monitor: str = 'val_f1_macro'):
+    def __init__(self, trial: optuna.trial.Trial, monitor: str = 'val_f1_weighted'):
         """
         Initialize pruning callback.
         
         Args:
             trial: Optuna trial object
-            monitor: Metric to monitor for pruning decisions
+            monitor: Metric to monitor for pruning decisions (default: val_f1_weighted for imbalanced data)
         """
         self.trial = trial
         self.monitor = monitor
@@ -315,7 +315,7 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
         early_stopping = EarlyStopping(patience=config.patience, min_delta=0.001)
         
         # Initialize pruning callback
-        pruning_callback = OptunaPruningCallback(trial, monitor='val_f1_macro')
+        pruning_callback = OptunaPruningCallback(trial, monitor='val_f1_weighted')
         
         # Initialize WandB run for this trial if available
         wandb_run = None
@@ -367,65 +367,71 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
             # Validate
             val_metrics = validate_epoch(model, val_loader, criterion, device)
             
-            # Log epoch metrics to WandB if available
-            try:
-                if wandb.run is not None:
-                    # Update summary for real-time monitoring
-                    wandb.run.summary[f"trial_{trial.number}/current_epoch"] = epoch
-                    wandb.run.summary[f"trial_{trial.number}/current_train_loss"] = train_metrics.get("loss", 0)
-                    wandb.run.summary[f"trial_{trial.number}/current_train_f1"] = train_metrics.get("f1_macro", 0)
-                    wandb.run.summary[f"trial_{trial.number}/current_val_loss"] = val_metrics.get("loss", 0)
-                    wandb.run.summary[f"trial_{trial.number}/current_val_f1"] = val_metrics.get("f1_macro", 0)
-                    wandb.run.summary[f"trial_{trial.number}/current_lr"] = optimizer.param_groups[0]['lr']
-                    
-                    # Also create a simple log entry for this epoch (using a unique key to avoid step conflicts)
-                    epoch_data = {
-                        f"epoch_data/trial_{trial.number}_epoch_{epoch:03d}": {
-                            "epoch": epoch,
-                            "train_loss": train_metrics.get("loss", 0),
-                            "train_f1": train_metrics.get("f1_macro", 0),
-                            "val_loss": val_metrics.get("loss", 0),
-                            "val_f1": val_metrics.get("f1_macro", 0),
-                            "learning_rate": optimizer.param_groups[0]['lr'],
-                        }
-                    }
-                    
-                    # Log as a single entry without step management
-                    wandb.log(epoch_data)
-                    
-                    # Track best values for this trial
-                    if val_metrics["f1_macro"] > best_val_f1:
-                        wandb.run.summary[f"trial_{trial.number}/best_val_f1"] = val_metrics["f1_macro"]
-                        wandb.run.summary[f"trial_{trial.number}/best_epoch"] = epoch
-                        
-                    logger.debug(f"Trial {trial.number} epoch {epoch} metrics logged to WandB")
-            except Exception as e:
-                logger.warning(f"Could not log epoch metrics for trial {trial.number}: {e}")
-                pass  # Continue even if WandB logging fails
+            # Update scheduler (use weighted F1 if available, otherwise macro F1)
+            scheduler_metric = val_metrics.get("f1_weighted_macro", val_metrics["f1_macro"])
+            scheduler.step(scheduler_metric)
             
-            # Update scheduler
-            scheduler.step(val_metrics["f1_macro"])
+            # Log metrics to W&B for this trial
+            if wandb.run is not None:
+                trial_metrics = {
+                    f"trial_{trial.number}/epoch": epoch,
+                    f"trial_{trial.number}/train_loss": train_metrics.get("loss", 0),
+                    f"trial_{trial.number}/val_loss": val_metrics.get("loss", 0),
+                    f"trial_{trial.number}/train_f1_macro": train_metrics.get("f1_macro", 0),
+                    f"trial_{trial.number}/val_f1_macro": val_metrics.get("f1_macro", 0),
+                    f"trial_{trial.number}/train_f1_weighted": train_metrics.get("f1_weighted_macro", 0),
+                    f"trial_{trial.number}/val_f1_weighted": val_metrics.get("f1_weighted_macro", 0),
+                    f"trial_{trial.number}/learning_rate": optimizer.param_groups[0]['lr'],
+                }
+                
+                # Store current val metrics for trial tracking
+                wandb.run.summary[f"trial_{trial.number}/current_train_f1"] = train_metrics.get("f1_macro", 0)
+                wandb.run.summary[f"trial_{trial.number}/current_train_f1_weighted"] = train_metrics.get("f1_weighted_macro", 0)
+                wandb.run.summary[f"trial_{trial.number}/current_val_f1"] = val_metrics.get("f1_macro", 0)
+                wandb.run.summary[f"trial_{trial.number}/current_val_f1_weighted"] = val_metrics.get("f1_weighted_macro", 0)
+                
+                # Log metrics for this epoch
+                epoch_data = {
+                    "epoch": epoch,
+                    "train_loss": train_metrics.get("loss", 0),
+                    "val_loss": val_metrics.get("loss", 0),
+                    "train_f1_macro": train_metrics.get("f1_macro", 0),
+                    "val_f1_macro": val_metrics.get("f1_macro", 0),
+                    "train_f1_weighted": train_metrics.get("f1_weighted_macro", 0),
+                    "val_f1_weighted": val_metrics.get("f1_weighted_macro", 0),
+                }
+                wandb.log(epoch_data)
             
-            # Check for pruning
+            # Check for pruning based on the monitoring metric
             if pruning_callback.should_prune(epoch, val_metrics):
-                # Log pruning event to WandB
+                # Log pruning info to WandB
                 try:
                     if wandb.run is not None:
                         pruning_data = {
                             f"trial_{trial.number}/pruned_at_epoch": epoch,
-                            f"trial_{trial.number}/final_val_f1": val_metrics["f1_macro"],
+                            f"trial_{trial.number}/final_val_f1_weighted": val_metrics.get("f1_weighted_macro", 0),
+                            f"trial_{trial.number}/final_val_f1_macro": val_metrics.get("f1_macro", 0),
                             f"trial_{trial.number}/status": "pruned"
                         }
-                        # Log without automatic stepping to avoid conflicts
+                        # Log without automatic stepping to avoid conflicts  
                         for key, value in pruning_data.items():
                             wandb.run.summary[key] = value
                 except Exception:
                     pass
                 raise optuna.exceptions.TrialPruned()
             
-            # Track best validation F1
-            if val_metrics["f1_macro"] > best_val_f1:
-                best_val_f1 = val_metrics["f1_macro"]
+            # Track best validation F1 (use weighted F1 for optimization)
+            current_val_f1 = val_metrics.get("f1_weighted_macro", val_metrics["f1_macro"])
+            if current_val_f1 > best_val_f1:
+                best_val_f1 = current_val_f1
+                # Log best metrics to WandB
+                try:
+                    if wandb.run is not None:
+                        wandb.run.summary[f"trial_{trial.number}/best_val_f1_weighted"] = val_metrics.get("f1_weighted_macro", 0)
+                        wandb.run.summary[f"trial_{trial.number}/best_val_f1_macro"] = val_metrics.get("f1_macro", 0)
+                        wandb.run.summary[f"trial_{trial.number}/best_epoch"] = epoch
+                except Exception:
+                    pass
             
             # Early stopping check - use validation loss (lower is better)
             val_loss = val_metrics.get("loss", float('inf'))
@@ -436,7 +442,8 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                     if wandb.run is not None:
                         early_stop_data = {
                             f"trial_{trial.number}/early_stopped_at_epoch": epoch,
-                            f"trial_{trial.number}/final_val_f1": best_val_f1,
+                            f"trial_{trial.number}/final_val_f1_weighted": best_val_f1,
+                            f"trial_{trial.number}/final_val_f1_macro": best_val_f1,
                             f"trial_{trial.number}/status": "early_stopped"
                         }
                         # Log without automatic stepping to avoid conflicts
@@ -450,7 +457,8 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
         try:
             if wandb.run is not None:
                 final_data = {
-                    f"trial_{trial.number}/final_val_f1": best_val_f1,
+                    f"trial_{trial.number}/final_val_f1_weighted": best_val_f1,
+                    f"trial_{trial.number}/final_val_f1_macro": best_val_f1,
                     f"trial_{trial.number}/total_epochs": epoch,
                     f"trial_{trial.number}/status": "completed",
                     f"trial_{trial.number}/trial_number": trial.number,
@@ -477,7 +485,8 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                 failed_data = {
                     f"trial_{trial.number}/status": "failed",
                     f"trial_{trial.number}/error": str(e),
-                    f"trial_{trial.number}/final_val_f1": 0.0,
+                    f"trial_{trial.number}/final_val_f1_weighted": 0.0,
+                    f"trial_{trial.number}/final_val_f1_macro": 0.0,
                 }
                 # Log without automatic stepping to avoid conflicts
                 for key, value in failed_data.items():
@@ -655,7 +664,7 @@ def optimize_hyperparameters(
                 "sampler": sampler,
                 "pruner": pruner,
                 "optimization_direction": "maximize",
-                "target_metric": "val_f1_macro",
+                "target_metric": "val_f1_weighted",
                 "available_architectures": ["ResNet50", "CheXNet", "Custom_1", "RadDINO"],
                 "hyperparameter_space": {
                     "model_arch": ["ResNet50", "CheXNet", "Custom_1", "RadDINO"],

@@ -21,7 +21,7 @@ from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
 from .models import build_model
 from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, log_config
-from .metrics import compute_pytorch_f1_metrics, compute_precision_recall_metrics
+from .metrics import compute_pytorch_f1_metrics, compute_precision_recall_metrics, compute_enhanced_f1_metrics
 
 
 def set_random_seeds(seed: int = 42) -> None:
@@ -103,8 +103,27 @@ def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict
     Returns:
         Dictionary with F1 metrics
     """
-    # Note: Now we include all classes (0-4) in F1 computation since we're learning class 4
-    return compute_pytorch_f1_metrics(predictions, targets, ignore_index=None)
+    # IMPORTANT: Use consistent ignore_index strategy 
+    # For medical CSI scores, we recommend ignore_index=4 to focus on gradable cases
+    # Change to ignore_index=None if you want to include unknown class in evaluation
+    
+    # Get both macro and weighted F1 scores for comprehensive analysis
+    enhanced_metrics = compute_enhanced_f1_metrics(
+        predictions, targets, 
+        ignore_index=4,  # Focus on gradable cases for medical interpretation
+        include_per_class=False  # Skip per-class details during training for speed
+    )
+    
+    # Return key metrics with backwards compatibility
+    return {
+        'f1_macro': enhanced_metrics['f1_macro'],
+        'f1_weighted_macro': enhanced_metrics['f1_weighted_macro'],
+        'f1_overall': enhanced_metrics['f1_overall'],
+        'f1_overall_weighted': enhanced_metrics['f1_overall_weighted'],
+        'f1_overall_micro': enhanced_metrics['f1_overall_micro'],
+        # Keep individual zone metrics
+        **{k: v for k, v in enhanced_metrics.items() if k.startswith('f1_zone_')}
+    }
 
 
 def compute_precision_recall(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, float]:
@@ -331,8 +350,8 @@ def train_model(config) -> None:
         
         # Log metrics
         logger.info(f"Epoch {epoch}:")
-        logger.info(f"  Train - Loss: {train_metrics['loss']:.4f}, F1: {train_metrics['f1_macro']:.4f}, Precision: {train_metrics['precision_macro']:.4f}, Recall: {train_metrics['recall_macro']:.4f}")
-        logger.info(f"  Val   - Loss: {val_metrics['loss']:.4f}, F1: {val_metrics['f1_macro']:.4f}, Precision: {val_metrics['precision_macro']:.4f}, Recall: {val_metrics['recall_macro']:.4f}")
+        logger.info(f"  Train - Loss: {train_metrics['loss']:.4f}, F1 Macro: {train_metrics['f1_macro']:.4f}, F1 Weighted: {train_metrics.get('f1_weighted_macro', 0):.4f}")
+        logger.info(f"  Val   - Loss: {val_metrics['loss']:.4f}, F1 Macro: {val_metrics['f1_macro']:.4f}, F1 Weighted: {val_metrics.get('f1_weighted_macro', 0):.4f}")
         logger.info(f"  Learning Rate: {current_lr:.6f}")
         
         # Log to wandb
@@ -343,11 +362,15 @@ def train_model(config) -> None:
                 # Loss metrics
                 "train_loss": train_metrics["loss"],
                 "val_loss": val_metrics["loss"],
-                # F1 metrics
+                # F1 metrics - Enhanced with weighted versions
                 "train_f1_macro": train_metrics["f1_macro"],
                 "val_f1_macro": val_metrics["f1_macro"],
+                "train_f1_weighted": train_metrics.get("f1_weighted_macro", 0),
+                "val_f1_weighted": val_metrics.get("f1_weighted_macro", 0),
                 "train_f1_overall": train_metrics["f1_overall"],
                 "val_f1_overall": val_metrics["f1_overall"],
+                "train_f1_overall_weighted": train_metrics.get("f1_overall_weighted", 0),
+                "val_f1_overall_weighted": val_metrics.get("f1_overall_weighted", 0),
                 # Precision metrics
                 "train_precision_macro": train_metrics["precision_macro"],
                 "val_precision_macro": val_metrics["precision_macro"],

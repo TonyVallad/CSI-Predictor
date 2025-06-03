@@ -4,7 +4,7 @@
 program: main.py
 method: bayes
 metric:
-  name: val_f1_macro
+  name: val_f1_weighted
   goal: maximize
 
 parameters:
@@ -33,7 +33,7 @@ parameters:
   
   # Early stopping
   patience:
-    values: [5, 8, 10, 15, 20]
+    values: [15]
   
   # Optimizer-specific parameters (conditional)
   weight_decay:

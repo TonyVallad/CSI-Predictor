@@ -126,13 +126,13 @@ def get_cached_data_loaders(config: Config) -> tuple[DataLoader, DataLoader, Dat
     return train_loader, val_loader, test_loader
 
 
-def get_sweep_config(method: str = "bayes", metric_name: str = "val_f1_macro") -> Dict[str, Any]:
+def get_sweep_config(method: str = "bayes", metric_name: str = "val_f1_weighted") -> Dict[str, Any]:
     """
     Generate sweep configuration for W&B.
     
     Args:
         method: Optimization method ('bayes', 'grid', 'random')
-        metric_name: Metric to optimize
+        metric_name: Metric to optimize (default: val_f1_weighted for imbalanced medical data)
         
     Returns:
         W&B sweep configuration dictionary
@@ -270,24 +270,28 @@ def train_sweep_run(base_config: Config, max_epochs: int = 50):
             val_metrics = validate_epoch(model, val_loader, criterion, device)
             
             # Update scheduler
-            scheduler.step(val_metrics["f1_macro"])
+            scheduler.step(val_metrics.get("f1_weighted_macro", val_metrics["f1_macro"]))
             
             # Log metrics to W&B (native integration - no step conflicts!)
             wandb.log({
                 'epoch': epoch,
                 'train_loss': train_metrics.get("loss", 0),
                 'train_f1_macro': train_metrics.get("f1_macro", 0),
+                'train_f1_weighted': train_metrics.get("f1_weighted_macro", 0),
                 'val_loss': val_metrics.get("loss", 0),
                 'val_f1_macro': val_metrics.get("f1_macro", 0),
+                'val_f1_weighted': val_metrics.get("f1_weighted_macro", 0),
                 'learning_rate': optimizer.param_groups[0]['lr'],
             })
             
-            # Track best validation F1
-            if val_metrics["f1_macro"] > best_val_f1:
-                best_val_f1 = val_metrics["f1_macro"]
+            # Track best validation F1 (use weighted F1 for optimization)
+            current_val_f1 = val_metrics.get("f1_weighted_macro", val_metrics["f1_macro"])
+            if current_val_f1 > best_val_f1:
+                best_val_f1 = current_val_f1
                 # Log best metrics
                 wandb.log({
-                    'best_val_f1_macro': best_val_f1,
+                    'best_val_f1_weighted': best_val_f1,
+                    'best_val_f1_macro': val_metrics.get("f1_macro", 0),
                     'best_epoch': epoch,
                 })
             
@@ -300,7 +304,8 @@ def train_sweep_run(base_config: Config, max_epochs: int = 50):
         
         # Log final results
         wandb.log({
-            'final_val_f1_macro': best_val_f1,
+            'final_val_f1_weighted': best_val_f1,
+            'final_val_f1_macro': val_metrics.get("f1_macro", 0),
             'total_epochs': epoch,
             'completed': True
         })
@@ -334,7 +339,7 @@ def initialize_sweep(
     _GLOBAL_DATA_CACHE.clear()
     
     # Create sweep configuration
-    sweep_config = get_sweep_config(method="bayes", metric_name="val_f1_macro")
+    sweep_config = get_sweep_config(method="bayes", metric_name="val_f1_weighted")
     
     # Initialize the sweep
     sweep_id = wandb.sweep(
