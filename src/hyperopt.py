@@ -321,8 +321,9 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
         wandb_run = None
         try:
             if wandb.run is not None:
-                # Define custom metrics to avoid step conflicts
-                wandb.define_metric(f"trial_{trial.number}/*", step_metric=f"trial_{trial.number}/epoch")
+                # Define custom metrics to separate trial metrics from global metrics
+                # This tells WandB that trial metrics are independent of global step
+                wandb.define_metric(f"trial_{trial.number}/*")
                 
                 # Log trial hyperparameters to WandB (without step to avoid conflicts)
                 trial_config = {
@@ -360,7 +361,6 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
             # Log epoch metrics to WandB if available
             try:
                 if wandb.run is not None:
-                    # Use explicit step for this trial's epoch metrics
                     epoch_metrics = {
                         f"trial_{trial.number}/epoch": epoch,
                         f"trial_{trial.number}/train_loss": train_metrics.get("loss", 0),
@@ -369,8 +369,8 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                         f"trial_{trial.number}/val_f1": val_metrics.get("f1_macro", 0),
                         f"trial_{trial.number}/learning_rate": optimizer.param_groups[0]['lr'],
                     }
-                    # Log with explicit step to maintain order within this trial
-                    wandb.log(epoch_metrics, step=epoch)
+                    # Log without explicit step - let WandB handle automatic stepping
+                    wandb.log(epoch_metrics)
             except Exception:
                 pass  # Continue even if WandB logging fails
             
