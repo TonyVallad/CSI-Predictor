@@ -361,16 +361,28 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
             # Log epoch metrics to WandB if available
             try:
                 if wandb.run is not None:
-                    epoch_metrics = {
-                        f"trial_{trial.number}/epoch": epoch,
-                        f"trial_{trial.number}/train_loss": train_metrics.get("loss", 0),
-                        f"trial_{trial.number}/train_f1": train_metrics.get("f1_macro", 0),
-                        f"trial_{trial.number}/val_loss": val_metrics.get("loss", 0),
-                        f"trial_{trial.number}/val_f1": val_metrics.get("f1_macro", 0),
-                        f"trial_{trial.number}/learning_rate": optimizer.param_groups[0]['lr'],
+                    # Instead of logging to timeline, update summary for real-time viewing
+                    # This completely avoids step conflicts
+                    wandb.run.summary[f"trial_{trial.number}/current_epoch"] = epoch
+                    wandb.run.summary[f"trial_{trial.number}/current_train_loss"] = train_metrics.get("loss", 0)
+                    wandb.run.summary[f"trial_{trial.number}/current_train_f1"] = train_metrics.get("f1_macro", 0)
+                    wandb.run.summary[f"trial_{trial.number}/current_val_loss"] = val_metrics.get("loss", 0)
+                    wandb.run.summary[f"trial_{trial.number}/current_val_f1"] = val_metrics.get("f1_macro", 0)
+                    wandb.run.summary[f"trial_{trial.number}/current_lr"] = optimizer.param_groups[0]['lr']
+                    
+                    # Also log to timeline with unique keys per epoch to maintain history
+                    timeline_metrics = {
+                        f"trial_{trial.number}/epoch_{epoch:02d}_train_loss": train_metrics.get("loss", 0),
+                        f"trial_{trial.number}/epoch_{epoch:02d}_train_f1": train_metrics.get("f1_macro", 0),
+                        f"trial_{trial.number}/epoch_{epoch:02d}_val_loss": val_metrics.get("loss", 0),
+                        f"trial_{trial.number}/epoch_{epoch:02d}_val_f1": val_metrics.get("f1_macro", 0),
+                        f"trial_{trial.number}/epoch_{epoch:02d}_lr": optimizer.param_groups[0]['lr'],
                     }
-                    # Log without explicit step - let WandB handle automatic stepping
-                    wandb.log(epoch_metrics)
+                    
+                    # Log timeline metrics without steps using commit=False pattern
+                    for key, value in timeline_metrics.items():
+                        wandb.log({key: value}, commit=False)
+                    wandb.log({})  # Commit the batch
             except Exception:
                 pass  # Continue even if WandB logging fails
             
