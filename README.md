@@ -47,6 +47,15 @@ CSI-PREDICTOR/
    pip install -r requirements.txt
    ```
 
+   **For RadDINO support** (optional but recommended):
+   ```bash
+   # RadDINO requires the transformers library
+   pip install transformers>=4.30.0
+   
+   # First run will download ~300MB model weights from microsoft/rad-dino
+   # Ensure you have internet access and sufficient disk space
+   ```
+
 4. **Configure environment**
    Create a `.env` file with your paths and settings:
    ```bash

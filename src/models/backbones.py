@@ -7,12 +7,18 @@ import torch
 import torch.nn as nn
 from torchvision import models
 from torchvision.models import ResNet50_Weights, DenseNet121_Weights
-from transformers import AutoModel, AutoImageProcessor
 from loguru import logger
 from typing import Dict, Any
 
-# Import RadDINO implementation
-from .rad_dino import RadDINOBackboneOnly
+# Conditional import for RadDINO (requires transformers library)
+try:
+    from transformers import AutoModel, AutoImageProcessor
+    from .rad_dino import RadDINOBackboneOnly
+    RADDINO_AVAILABLE = True
+except ImportError:
+    logger.warning("Transformers library not available. RadDINO backbone will not be available.")
+    RADDINO_AVAILABLE = False
+    RadDINOBackboneOnly = None
 
 
 class CustomCNNBackbone(nn.Module):
@@ -160,6 +166,12 @@ class RadDINOBackbone(nn.Module):
         """
         super().__init__()
         
+        if not RADDINO_AVAILABLE:
+            raise ImportError(
+                "RadDINO backbone requires the transformers library. "
+                "Install it with: pip install transformers>=4.30.0"
+            )
+        
         # Use the dedicated RadDINO implementation
         self.backbone = RadDINOBackboneOnly(pretrained=pretrained)
         self.feature_dim = self.backbone.feature_dim
@@ -206,11 +218,18 @@ def get_backbone(name: str, pretrained: bool = True) -> nn.Module:
         return CustomCNNBackbone(input_channels=3)
     
     elif name == "raddino":
+        if not RADDINO_AVAILABLE:
+            raise ImportError(
+                "RadDINO backbone requires the transformers library. "
+                "Install it with: pip install transformers>=4.30.0"
+            )
         logger.info(f"Creating RadDINO backbone (pretrained={pretrained})")
         return RadDINOBackbone(pretrained=pretrained)
     
     else:
-        available_backbones = ["ResNet50", "CheXNet", "Custom_1", "RadDINO"]
+        available_backbones = ["ResNet50", "CheXNet", "Custom_1"]
+        if RADDINO_AVAILABLE:
+            available_backbones.append("RadDINO")
         raise ValueError(f"Unsupported backbone: {name}. Available: {available_backbones}")
 
 
@@ -233,10 +252,19 @@ def get_backbone_feature_dim(name: str) -> int:
         "raddino": 768  # RadDINO feature dimension
     }
     
+    if name == "raddino" and not RADDINO_AVAILABLE:
+        raise ImportError(
+            "RadDINO backbone requires the transformers library. "
+            "Install it with: pip install transformers>=4.30.0"
+        )
+    
     if name in backbone_dims:
         return backbone_dims[name]
     else:
-        raise ValueError(f"Unknown backbone: {name}")
+        available_backbones = ["ResNet50", "CheXNet", "Custom_1"]
+        if RADDINO_AVAILABLE:
+            available_backbones.append("RadDINO")
+        raise ValueError(f"Unknown backbone: {name}. Available: {available_backbones}")
 
 
 # Export main functions
