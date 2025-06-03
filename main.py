@@ -29,7 +29,7 @@ def main():
     parser.add_argument("--max-epochs", type=int, default=30, help="Maximum epochs per trial during optimization")
     parser.add_argument("--sampler", default="tpe", choices=['tpe', 'random', 'cmaes'], help="Optuna sampler algorithm")
     parser.add_argument("--pruner", default="median", choices=['median', 'successive_halving', 'none'], help="Optuna pruner algorithm")
-    parser.add_argument("--wandb-project", help="WandB project name for hyperopt logging")
+    parser.add_argument("--wandb-project", default="csi-hyperopt", help="WandB project name for hyperopt logging (default: csi-hyperopt). Set to 'none' to disable WandB logging.")
     
     # Train with optimized hyperparameters
     parser.add_argument("--hyperparams", help="Path to JSON file with best hyperparameters (for train-optimized mode)")
@@ -58,6 +58,15 @@ def main():
         logger.info("Starting hyperparameter optimization...")
         from src.hyperopt import optimize_hyperparameters
         
+        # Handle WandB project configuration
+        wandb_project = args.wandb_project if args.wandb_project.lower() != 'none' else None
+        
+        if wandb_project:
+            logger.info(f"WandB logging enabled - Project: {wandb_project}")
+            logger.info("You can monitor progress in real-time at: https://wandb.ai/")
+        else:
+            logger.info("WandB logging disabled")
+        
         study = optimize_hyperparameters(
             study_name=args.study_name,
             n_trials=args.n_trials,
@@ -65,7 +74,7 @@ def main():
             config_path=args.config,
             sampler=args.sampler,
             pruner=args.pruner,
-            wandb_project=args.wandb_project
+            wandb_project=wandb_project
         )
         logger.info("Hyperparameter optimization completed.")
         

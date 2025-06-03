@@ -317,6 +317,27 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
         # Initialize pruning callback
         pruning_callback = OptunaPruningCallback(trial, monitor='val_f1_macro')
         
+        # Initialize WandB run for this trial if available
+        wandb_run = None
+        try:
+            if wandb.run is not None:
+                # Log trial hyperparameters to WandB
+                wandb.log({
+                    f"trial_{trial.number}/model_arch": config.model_arch,
+                    f"trial_{trial.number}/optimizer": config.optimizer,
+                    f"trial_{trial.number}/learning_rate": config.learning_rate,
+                    f"trial_{trial.number}/batch_size": config.batch_size,
+                    f"trial_{trial.number}/unknown_weight": unknown_weight,
+                    f"trial_{trial.number}/patience": config.patience,
+                    f"trial_{trial.number}/weight_decay": config._ini_vars.get('weight_decay', 0.0),
+                    f"trial_{trial.number}/momentum": config._ini_vars.get('momentum', 0.0),
+                    f"trial_{trial.number}/total_parameters": sum(p.numel() for p in model.parameters()),
+                    f"trial_{trial.number}/trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
+                })
+                logger.info(f"Trial {trial.number} hyperparameters logged to WandB")
+        except Exception as e:
+            logger.warning(f"Could not log trial {trial.number} to WandB: {e}")
+        
         # Training loop
         best_val_f1 = 0.0
         
@@ -327,11 +348,35 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
             # Validate
             val_metrics = validate_epoch(model, val_loader, criterion, device)
             
+            # Log epoch metrics to WandB if available
+            try:
+                if wandb.run is not None:
+                    wandb.log({
+                        f"trial_{trial.number}/epoch": epoch,
+                        f"trial_{trial.number}/train_loss": train_metrics.get("loss", 0),
+                        f"trial_{trial.number}/train_f1": train_metrics.get("f1_macro", 0),
+                        f"trial_{trial.number}/val_loss": val_metrics.get("loss", 0),
+                        f"trial_{trial.number}/val_f1": val_metrics.get("f1_macro", 0),
+                        f"trial_{trial.number}/learning_rate": optimizer.param_groups[0]['lr'],
+                    })
+            except Exception:
+                pass  # Continue even if WandB logging fails
+            
             # Update scheduler
             scheduler.step(val_metrics["f1_macro"])
             
             # Check for pruning
             if pruning_callback.should_prune(epoch, val_metrics):
+                # Log pruning event to WandB
+                try:
+                    if wandb.run is not None:
+                        wandb.log({
+                            f"trial_{trial.number}/pruned_at_epoch": epoch,
+                            f"trial_{trial.number}/final_val_f1": val_metrics["f1_macro"],
+                            f"trial_{trial.number}/status": "pruned"
+                        })
+                except Exception:
+                    pass
                 raise optuna.exceptions.TrialPruned()
             
             # Track best validation F1
@@ -342,7 +387,29 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
             val_loss = val_metrics.get("loss", float('inf'))
             if early_stopping(val_loss, model):
                 logger.info(f"Early stopping triggered at epoch {epoch}")
+                # Log early stopping to WandB
+                try:
+                    if wandb.run is not None:
+                        wandb.log({
+                            f"trial_{trial.number}/early_stopped_at_epoch": epoch,
+                            f"trial_{trial.number}/final_val_f1": best_val_f1,
+                            f"trial_{trial.number}/status": "early_stopped"
+                        })
+                except Exception:
+                    pass
                 break
+        
+        # Log final trial results to WandB
+        try:
+            if wandb.run is not None:
+                wandb.log({
+                    f"trial_{trial.number}/final_val_f1": best_val_f1,
+                    f"trial_{trial.number}/total_epochs": epoch,
+                    f"trial_{trial.number}/status": "completed",
+                    f"trial_{trial.number}/trial_number": trial.number,
+                })
+        except Exception:
+            pass
         
         # Log trial results
         logger.info(f"Trial {trial.number} completed with best val F1: {best_val_f1:.4f}")
@@ -354,6 +421,16 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
         raise
     except Exception as e:
         logger.error(f"Trial {trial.number} failed with error: {e}")
+        # Log failed trial to WandB
+        try:
+            if wandb.run is not None:
+                wandb.log({
+                    f"trial_{trial.number}/status": "failed",
+                    f"trial_{trial.number}/error": str(e),
+                    f"trial_{trial.number}/final_val_f1": 0.0,
+                })
+        except Exception:
+            pass
         # Return a poor score for failed trials
         return 0.0
 
@@ -457,7 +534,7 @@ def optimize_hyperparameters(
     sampler: str = 'tpe',
     pruner: str = 'median',
     storage_url: Optional[str] = None,
-    wandb_project: Optional[str] = None
+    wandb_project: Optional[str] = "csi-hyperopt"  # Default project name
 ) -> optuna.Study:
     """
     Main hyperparameter optimization function.
@@ -470,7 +547,7 @@ def optimize_hyperparameters(
         sampler: Sampler algorithm to use
         pruner: Pruner algorithm to use
         storage_url: Database URL for distributed optimization
-        wandb_project: WandB project name for logging
+        wandb_project: WandB project name for logging (now defaults to "csi-hyperopt")
         
     Returns:
         Completed Optuna study
@@ -490,9 +567,36 @@ def optimize_hyperparameters(
         direction='maximize'
     )
     
-    # Setup WandB callback if project specified
+    # Setup WandB callback and run
     wandb_callback = None
+    wandb_run = None
+    
     if wandb_project:
+        # Initialize WandB run for the entire optimization study
+        wandb_run = wandb.init(
+            project=wandb_project,
+            name=f"optuna_study_{study_name}",
+            tags=["hyperparameter_optimization", "csi_predictor", "optuna_study"],
+            config={
+                "study_name": study_name,
+                "n_trials": n_trials,
+                "max_epochs": max_epochs,
+                "sampler": sampler,
+                "pruner": pruner,
+                "optimization_direction": "maximize",
+                "target_metric": "val_f1_macro",
+                "available_architectures": ["ResNet50", "CheXNet", "Custom_1"],
+                "hyperparameter_space": {
+                    "model_arch": ["ResNet50", "CheXNet", "Custom_1"],
+                    "optimizer": ["adam", "adamw", "sgd"],
+                    "learning_rate": {"min": 1e-5, "max": 1e-1, "log": True},
+                    "batch_size": [16, 32, 64, 128],
+                    "unknown_weight": {"min": 0.1, "max": 1.0},
+                    "patience": {"min": 5, "max": 20},
+                }
+            }
+        )
+        
         wandb_callback = WeightsAndBiasesCallback(
             metric_name="val_f1_macro",
             wandb_kwargs={
@@ -501,6 +605,9 @@ def optimize_hyperparameters(
                 "tags": ["hyperparameter_optimization", "csi_predictor"]
             }
         )
+        
+        logger.info(f"WandB integration enabled - Project: {wandb_project}")
+        logger.info(f"WandB run: {wandb_run.url if wandb_run else 'Not available'}")
     
     # Define objective function with base config
     def trial_objective(trial):
@@ -513,9 +620,97 @@ def optimize_hyperparameters(
     logger.info(f"Sampler: {sampler}, Pruner: {pruner}")
     logger.info(f"Available model architectures: ResNet50, CheXNet, Custom_1")
     
-    # Optimize
-    callbacks = [wandb_callback] if wandb_callback else None
-    study.optimize(trial_objective, n_trials=n_trials, callbacks=callbacks)
+    # Track optimization progress
+    if wandb_run:
+        # Log initial study information
+        wandb.log({
+            "study/n_trials_planned": n_trials,
+            "study/max_epochs_per_trial": max_epochs,
+            "study/optimization_started": 1,
+        })
+    
+    # Optimize with progress tracking
+    try:
+        callbacks = [wandb_callback] if wandb_callback else None
+        
+        # Custom callback to track progress
+        def progress_callback(study: optuna.Study, trial: optuna.trial.FrozenTrial):
+            """Log study progress to WandB."""
+            if wandb_run:
+                completed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+                pruned_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
+                failed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.FAIL])
+                
+                wandb.log({
+                    "study/completed_trials": completed_trials,
+                    "study/pruned_trials": pruned_trials,
+                    "study/failed_trials": failed_trials,
+                    "study/total_trials": len(study.trials),
+                    "study/best_value_so_far": study.best_value if study.best_value is not None else 0.0,
+                    "study/progress_percent": (len(study.trials) / n_trials) * 100,
+                })
+                
+                # Log best parameters so far
+                if study.best_params:
+                    for param_name, param_value in study.best_params.items():
+                        wandb.log({f"study/best_{param_name}": param_value})
+        
+        # Add progress callback to existing callbacks
+        if callbacks:
+            callbacks.append(progress_callback)
+        else:
+            callbacks = [progress_callback]
+        
+        study.optimize(trial_objective, n_trials=n_trials, callbacks=callbacks)
+        
+    except Exception as e:
+        logger.error(f"Optimization failed: {e}")
+        if wandb_run:
+            wandb.log({"study/optimization_failed": 1, "study/error": str(e)})
+        raise
+    
+    # Log final study results to WandB
+    if wandb_run:
+        completed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+        pruned_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
+        failed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.FAIL])
+        
+        wandb.log({
+            "study/optimization_completed": 1,
+            "study/final_best_value": study.best_value if study.best_value is not None else 0.0,
+            "study/final_completed_trials": completed_trials,
+            "study/final_pruned_trials": pruned_trials,
+            "study/final_failed_trials": failed_trials,
+            "study/final_total_trials": len(study.trials),
+            "study/success_rate": (completed_trials / len(study.trials)) * 100 if study.trials else 0,
+        })
+        
+        # Log best hyperparameters as a table
+        if study.best_params:
+            best_params_table = wandb.Table(
+                columns=["Parameter", "Value"],
+                data=[[k, str(v)] for k, v in study.best_params.items()]
+            )
+            wandb.log({"study/best_hyperparameters": best_params_table})
+        
+        # Create trials summary table
+        trials_data = []
+        for trial in study.trials:
+            row = [
+                trial.number,
+                trial.state.name,
+                trial.value if trial.value is not None else 0.0,
+            ]
+            # Add parameter values
+            for param_name in ["model_arch", "optimizer", "learning_rate", "batch_size", "unknown_weight", "patience"]:
+                row.append(str(trial.params.get(param_name, "N/A")))
+            trials_data.append(row)
+        
+        trials_table = wandb.Table(
+            columns=["Trial", "State", "Value", "Architecture", "Optimizer", "Learning Rate", "Batch Size", "Unknown Weight", "Patience"],
+            data=trials_data
+        )
+        wandb.log({"study/all_trials_summary": trials_table})
     
     # Save results
     output_dir = Path(base_config.models_dir) / "hyperopt"
@@ -536,6 +731,11 @@ def optimize_hyperparameters(
     print(f"Best parameters:")
     for key, value in study.best_params.items():
         print(f"  {key}: {value}")
+    
+    if wandb_run:
+        print(f"WandB Dashboard: {wandb_run.url}")
+        # Finish the WandB run
+        wandb.finish()
     
     return study
 
