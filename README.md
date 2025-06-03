@@ -172,7 +172,52 @@ python -m src.evaluate --ini custom_config.ini
 
 ### Hyperparameter Optimization
 
-Automated hyperparameter optimization using [Optuna](https://optuna.readthedocs.io/) with Bayesian optimization:
+**Two Methods Available:**
+
+#### Method 1: W&B Sweeps (Recommended)
+
+Native W&B integration with superior visualization and no step conflicts:
+
+```bash
+# Initialize a sweep
+python main.py --mode sweep --sweep-name "csi_production" --sweep-project "csi-sweeps"
+
+# Run sweep agents (can run multiple in parallel)
+python main.py --mode sweep-agent --sweep-id "your_sweep_id" --count 10
+```
+
+**W&B Sweeps Features:**
+- **Native Integration**: Perfect WandB integration with automatic visualization
+- **Bayesian Optimization**: Intelligent hyperparameter search using Bayesian methods  
+- **Early Termination**: Hyperband algorithm stops poor runs early
+- **Easy Parallelization**: Run multiple agents across machines effortlessly
+- **Advanced Visualization**: Rich dashboards with parameter importance, parallel coordinates
+- **No Step Conflicts**: Clean logging without technical issues
+
+**Optimized Hyperparameters:**
+- **Model Architecture**: ResNet50, CheXNet, Custom_1
+- **Optimizer**: Adam, AdamW, SGD with conditional weight decay and momentum
+- **Learning Rate**: 1e-5 to 1e-1 (log uniform distribution)
+- **Batch Size**: 16, 32, 64, 128
+- **Loss Function**: WeightedCSILoss unknown_weight (0.1 to 1.0 uniform)
+- **Early Stopping**: Patience (5, 8, 10, 15, 20 epochs)
+
+**Advanced Usage:**
+```bash
+# Custom sweep configuration
+python -m src.wandb_sweep --mode init --project "my-project" --sweep-name "experiment_1"
+
+# Multiple parallel agents
+python main.py --mode sweep-agent --sweep-id "abc123" --count 5 &
+python main.py --mode sweep-agent --sweep-id "abc123" --count 5 &
+
+# Custom entity and project
+python main.py --mode sweep --entity "my-team" --sweep-project "csi-research"
+```
+
+#### Method 2: Optuna (Legacy)
+
+Traditional Optuna-based hyperparameter optimization:
 
 ```bash
 # Quick optimization (50 trials)
@@ -192,29 +237,24 @@ python main.py --mode train-optimized \
     --hyperparams models/hyperopt/csi_optimization_best_params.json
 ```
 
-**Optimized Hyperparameters:**
-- **Model Architecture**: ResNet50, CheXNet, Custom_1
-- **Optimizer**: Adam, AdamW, SGD with weight decay and momentum
-- **Learning Rate**: 1e-5 to 1e-1 (log scale)
-- **Batch Size**: 16, 32, 64, 128
-- **Loss Function**: WeightedCSILoss unknown_weight (0.1 to 1.0)
-- **Early Stopping**: Patience (5 to 20 epochs)
+**Optuna Features:**
+- **Proven Algorithms**: TPE, CMA-ES, Random sampling
+- **Advanced Pruning**: Median pruner and successive halving
+- **Study Persistence**: Resume optimization across sessions
+- **Distributed**: Run across multiple machines with shared storage
 
-**Optimization Features:**
-- **Bayesian Optimization**: TPE sampler for intelligent parameter search
-- **Early Pruning**: Automatically stops poor trials to save computation
-- **Smart Caching**: One-time image caching across all trials for 60-80% speedup
-- **WandB Integration**: Real-time monitoring and parameter importance analysis
-- **Resumable Studies**: Continue optimization across sessions
-- **Visualization**: Interactive plots for optimization history and parameter relationships
+**Comparison:**
 
-**Results:**
-After optimization, you get:
-- `models/hyperopt/study_name_best_params.json`: Best hyperparameters
-- Interactive HTML plots: optimization history, parameter importance, parallel coordinates
-- WandB dashboard with detailed trial analysis
+| Feature | W&B Sweeps | Optuna |
+|---------|------------|--------|
+| WandB Integration | Native, Perfect | Manual, Complex |
+| Visualization | Built-in, Rich | Requires setup |
+| Parallelization | Effortless | Manual setup |
+| Step Conflicts | None | Potential issues |
+| Learning Curve | Easy | Moderate |
+| Customization | Good | Excellent |
 
-See `docs/hyperparameter_optimization.md` for detailed documentation.
+**Recommendation**: Use **W&B Sweeps** for most cases due to superior integration and ease of use. Use **Optuna** only if you need specific advanced features or custom optimization algorithms.
 
 ### Advanced Usage Examples
 

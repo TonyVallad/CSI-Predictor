@@ -1,0 +1,62 @@
+# W&B Sweep Configuration for CSI-Predictor
+# This file defines the hyperparameter search space and optimization strategy
+
+program: main.py
+method: bayes
+metric:
+  name: val_f1_macro
+  goal: maximize
+
+parameters:
+  # Model architecture
+  model_arch:
+    values: ['ResNet50', 'CheXNet', 'Custom_1']
+  
+  # Optimizer settings
+  optimizer:
+    values: ['adam', 'adamw', 'sgd']
+  
+  learning_rate:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.1
+  
+  # Training parameters
+  batch_size:
+    values: [16, 32, 64, 128]
+  
+  # Loss function parameters
+  unknown_weight:
+    distribution: uniform
+    min: 0.1
+    max: 1.0
+  
+  # Early stopping
+  patience:
+    values: [5, 8, 10, 15, 20]
+  
+  # Optimizer-specific parameters (conditional)
+  weight_decay:
+    distribution: log_uniform_values
+    min: 0.000001
+    max: 0.01
+  
+  momentum:
+    distribution: uniform
+    min: 0.5
+    max: 0.99
+
+# Early termination for poor performing runs
+early_terminate:
+  type: hyperband
+  min_iter: 3
+  eta: 2
+
+# Command to run for each sweep trial
+command:
+  - python
+  - main.py
+  - --mode
+  - train
+  - --config
+  - config.ini 
