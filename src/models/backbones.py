@@ -12,11 +12,13 @@ from typing import Dict, Any
 
 # Conditional import for RadDINO (requires transformers library)
 try:
+    import transformers
     from transformers import AutoModel, AutoImageProcessor
     from .rad_dino import RadDINOBackboneOnly
     RADDINO_AVAILABLE = True
-except ImportError:
-    logger.warning("Transformers library not available. RadDINO backbone will not be available.")
+    logger.debug("RadDINO backbone is available (transformers library found)")
+except ImportError as e:
+    logger.warning(f"RadDINO backbone not available. Missing dependency: {e}")
     RADDINO_AVAILABLE = False
     RadDINOBackboneOnly = None
 
