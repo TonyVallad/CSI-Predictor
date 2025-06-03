@@ -177,10 +177,24 @@ def create_optuna_config(trial: optuna.trial.Trial, base_config: Config) -> Conf
     Returns:
         Modified configuration with suggested hyperparameters
     """
+    # Dynamically determine available model architectures
+    available_architectures = ['ResNet50', 'CheXNet', 'Custom_1']
+    
+    # Check if RadDINO is available
+    try:
+        from .models.backbones import RADDINO_AVAILABLE
+        if RADDINO_AVAILABLE:
+            available_architectures.append('RadDINO')
+            logger.debug("RadDINO included in optimization architectures")
+        else:
+            logger.warning("RadDINO not available - excluded from optimization architectures")
+    except ImportError:
+        logger.warning("Could not check RadDINO availability - excluded from optimization architectures")
+    
     # Model architecture optimization - using only available architectures
     model_arch = trial.suggest_categorical(
         'model_arch', 
-        ['ResNet50', 'CheXNet', 'Custom_1', 'RadDINO']  # Only use actually available ones
+        available_architectures
     )
     
     # Optimizer hyperparameters

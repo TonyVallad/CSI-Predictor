@@ -11,14 +11,29 @@ from loguru import logger
 from typing import Dict, Any
 
 # Conditional import for RadDINO (requires transformers library)
+RADDINO_AVAILABLE = False
+RadDINOBackboneOnly = None
+
+# First check if transformers is available
 try:
     import transformers
     from transformers import AutoModel, AutoImageProcessor
-    from .rad_dino import RadDINOBackboneOnly
-    RADDINO_AVAILABLE = True
-    logger.debug("RadDINO backbone is available (transformers library found)")
-except ImportError as e:
-    logger.warning(f"RadDINO backbone not available. Missing dependency: {e}")
+    logger.debug(f"Transformers library is available (version {transformers.__version__})")
+    
+    # Then try to import RadDINO implementation
+    try:
+        from .rad_dino import RadDINOBackboneOnly
+        RADDINO_AVAILABLE = True
+        logger.debug("RadDINO backbone is available (all dependencies found)")
+    except ImportError as rad_dino_error:
+        logger.warning(f"RadDINO implementation not available: {rad_dino_error}")
+        logger.warning("Transformers library is available, but RadDINO implementation failed to import")
+        RADDINO_AVAILABLE = False
+        RadDINOBackboneOnly = None
+        
+except ImportError as transformers_error:
+    logger.warning(f"Transformers library not available: {transformers_error}")
+    logger.warning("RadDINO backbone will not be available. Install with: pip install transformers>=4.30.0")
     RADDINO_AVAILABLE = False
     RadDINOBackboneOnly = None
 
@@ -220,13 +235,36 @@ def get_backbone(name: str, pretrained: bool = True) -> nn.Module:
         return CustomCNNBackbone(input_channels=3)
     
     elif name == "raddino":
+        # Dynamic check for RadDINO availability with detailed error reporting
+        try:
+            import transformers
+            logger.debug(f"Transformers available: version {transformers.__version__}")
+        except ImportError as e:
+            raise ImportError(
+                f"RadDINO backbone requires the transformers library. "
+                f"Install it with: pip install transformers>=4.30.0. Error: {e}"
+            )
+        
+        try:
+            from .rad_dino import RadDINOBackboneOnly
+            logger.info(f"Creating RadDINO backbone (pretrained={pretrained})")
+            return RadDINOBackbone(pretrained=pretrained)
+        except ImportError as e:
+            logger.error(f"Failed to import RadDINO implementation: {e}")
+            raise ImportError(
+                f"RadDINO implementation failed to import: {e}. "
+                f"Check that src/models/rad_dino.py exists and all dependencies are installed."
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error creating RadDINO backbone: {e}")
+            raise RuntimeError(f"Failed to create RadDINO backbone: {e}")
+        
+        # Fallback check using the global flag
         if not RADDINO_AVAILABLE:
             raise ImportError(
                 "RadDINO backbone requires the transformers library. "
                 "Install it with: pip install transformers>=4.30.0"
             )
-        logger.info(f"Creating RadDINO backbone (pretrained={pretrained})")
-        return RadDINOBackbone(pretrained=pretrained)
     
     else:
         available_backbones = ["ResNet50", "CheXNet", "Custom_1"]
@@ -277,4 +315,50 @@ __all__ = [
     'CheXNetBackbone',
     'CustomCNNBackbone',
     'RadDINOBackbone'
-] 
+]
+
+
+def diagnose_raddino_availability():
+    """
+    Diagnostic function to help debug RadDINO availability issues.
+    This can be called to get detailed information about what's failing.
+    """
+    print("=== RadDINO Availability Diagnosis ===")
+    
+    # Check transformers library
+    try:
+        import transformers
+        print(f"✅ Transformers library: {transformers.__version__}")
+        
+        try:
+            from transformers import AutoModel, AutoImageProcessor
+            print("✅ Required transformers components imported successfully")
+        except ImportError as e:
+            print(f"❌ Failed to import transformers components: {e}")
+            return
+            
+    except ImportError as e:
+        print(f"❌ Transformers library not available: {e}")
+        return
+    
+    # Check rad_dino module
+    try:
+        from .rad_dino import RadDINOBackboneOnly
+        print("✅ RadDINO implementation imported successfully")
+        
+        try:
+            backbone = RadDINOBackboneOnly(pretrained=True)
+            print(f"✅ RadDINO backbone created successfully (feature_dim: {backbone.feature_dim})")
+        except Exception as e:
+            print(f"❌ Failed to create RadDINO backbone: {e}")
+            
+    except ImportError as e:
+        print(f"❌ Failed to import RadDINO implementation: {e}")
+    
+    print(f"Global RADDINO_AVAILABLE flag: {RADDINO_AVAILABLE}")
+    print("=== End Diagnosis ===")
+
+
+if __name__ == "__main__":
+    # Run diagnosis if script is called directly
+    diagnose_raddino_availability() 

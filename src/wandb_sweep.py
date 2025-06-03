@@ -137,6 +137,22 @@ def get_sweep_config(method: str = "bayes", metric_name: str = "val_f1_weighted"
     Returns:
         W&B sweep configuration dictionary
     """
+    # Dynamically determine available model architectures
+    available_architectures = ['ResNet50', 'CheXNet', 'Custom_1']
+    
+    # Check if RadDINO is available
+    try:
+        from .models.backbones import RADDINO_AVAILABLE
+        if RADDINO_AVAILABLE:
+            available_architectures.append('RadDINO')
+            logger.info("RadDINO included in sweep architectures")
+        else:
+            logger.warning("RadDINO not available - excluded from sweep architectures")
+    except ImportError:
+        logger.warning("Could not check RadDINO availability - excluded from sweep architectures")
+    
+    logger.info(f"Available architectures for sweep: {available_architectures}")
+    
     return {
         'method': method,
         'metric': {
@@ -145,7 +161,7 @@ def get_sweep_config(method: str = "bayes", metric_name: str = "val_f1_weighted"
         },
         'parameters': {
             'model_arch': {
-                'values': ['ResNet50', 'CheXNet', 'Custom_1', 'RadDINO']
+                'values': available_architectures
             },
             'optimizer': {
                 'values': ['adam', 'adamw', 'sgd']
