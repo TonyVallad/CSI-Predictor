@@ -325,8 +325,8 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                 # This tells WandB that trial metrics are independent of global step
                 wandb.define_metric(f"trial_{trial.number}/*")
                 
-                # Log trial hyperparameters to WandB (without step to avoid conflicts)
-                trial_config = {
+                # Log trial hyperparameters to WandB using summary (no steps)
+                for key, value in {
                     f"trial_{trial.number}/model_arch": config.model_arch,
                     f"trial_{trial.number}/optimizer": config.optimizer,
                     f"trial_{trial.number}/learning_rate": config.learning_rate,
@@ -337,12 +337,8 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                     f"trial_{trial.number}/momentum": config._ini_vars.get('momentum', 0.0),
                     f"trial_{trial.number}/total_parameters": sum(p.numel() for p in model.parameters()),
                     f"trial_{trial.number}/trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
-                }
-                
-                # Log without automatic stepping
-                for key, value in trial_config.items():
-                    wandb.log({key: value}, commit=False)
-                wandb.log({})  # Commit the batch
+                }.items():
+                    wandb.run.summary[key] = value
                 
                 logger.info(f"Trial {trial.number} hyperparameters logged to WandB")
         except Exception as e:
@@ -361,8 +357,7 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
             # Log epoch metrics to WandB if available
             try:
                 if wandb.run is not None:
-                    # Instead of logging to timeline, update summary for real-time viewing
-                    # This completely avoids step conflicts
+                    # Only use summary updates - no timeline logging to avoid step conflicts completely
                     wandb.run.summary[f"trial_{trial.number}/current_epoch"] = epoch
                     wandb.run.summary[f"trial_{trial.number}/current_train_loss"] = train_metrics.get("loss", 0)
                     wandb.run.summary[f"trial_{trial.number}/current_train_f1"] = train_metrics.get("f1_macro", 0)
@@ -370,19 +365,10 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                     wandb.run.summary[f"trial_{trial.number}/current_val_f1"] = val_metrics.get("f1_macro", 0)
                     wandb.run.summary[f"trial_{trial.number}/current_lr"] = optimizer.param_groups[0]['lr']
                     
-                    # Also log to timeline with unique keys per epoch to maintain history
-                    timeline_metrics = {
-                        f"trial_{trial.number}/epoch_{epoch:02d}_train_loss": train_metrics.get("loss", 0),
-                        f"trial_{trial.number}/epoch_{epoch:02d}_train_f1": train_metrics.get("f1_macro", 0),
-                        f"trial_{trial.number}/epoch_{epoch:02d}_val_loss": val_metrics.get("loss", 0),
-                        f"trial_{trial.number}/epoch_{epoch:02d}_val_f1": val_metrics.get("f1_macro", 0),
-                        f"trial_{trial.number}/epoch_{epoch:02d}_lr": optimizer.param_groups[0]['lr'],
-                    }
-                    
-                    # Log timeline metrics without steps using commit=False pattern
-                    for key, value in timeline_metrics.items():
-                        wandb.log({key: value}, commit=False)
-                    wandb.log({})  # Commit the batch
+                    # Track best values for this trial
+                    if val_metrics["f1_macro"] > best_val_f1:
+                        wandb.run.summary[f"trial_{trial.number}/best_val_f1"] = val_metrics["f1_macro"]
+                        wandb.run.summary[f"trial_{trial.number}/best_epoch"] = epoch
             except Exception:
                 pass  # Continue even if WandB logging fails
             
@@ -401,8 +387,7 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                         }
                         # Log without automatic stepping to avoid conflicts
                         for key, value in pruning_data.items():
-                            wandb.log({key: value}, commit=False)
-                        wandb.log({})  # Commit the batch
+                            wandb.run.summary[key] = value
                 except Exception:
                     pass
                 raise optuna.exceptions.TrialPruned()
@@ -425,8 +410,7 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                         }
                         # Log without automatic stepping to avoid conflicts
                         for key, value in early_stop_data.items():
-                            wandb.log({key: value}, commit=False)
-                        wandb.log({})  # Commit the batch
+                            wandb.run.summary[key] = value
                 except Exception:
                     pass
                 break
@@ -442,8 +426,7 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                 }
                 # Log without automatic stepping to avoid conflicts
                 for key, value in final_data.items():
-                    wandb.log({key: value}, commit=False)
-                wandb.log({})  # Commit the batch
+                    wandb.run.summary[key] = value
         except Exception:
             pass
         
@@ -467,8 +450,7 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
                 }
                 # Log without automatic stepping to avoid conflicts
                 for key, value in failed_data.items():
-                    wandb.log({key: value}, commit=False)
-                wandb.log({})  # Commit the batch
+                    wandb.run.summary[key] = value
         except Exception:
             pass
         # Return a poor score for failed trials
@@ -637,15 +619,6 @@ def optimize_hyperparameters(
             }
         )
         
-        wandb_callback = WeightsAndBiasesCallback(
-            metric_name="val_f1_macro",
-            wandb_kwargs={
-                "project": wandb_project,
-                "name": f"optuna_{study_name}",
-                "tags": ["hyperparameter_optimization", "csi_predictor"]
-            }
-        )
-        
         logger.info(f"WandB integration enabled - Project: {wandb_project}")
         logger.info(f"WandB run: {wandb_run.url if wandb_run else 'Not available'}")
     
@@ -662,16 +635,10 @@ def optimize_hyperparameters(
     
     # Track optimization progress
     if wandb_run:
-        # Log initial study information
-        initial_data = {
-            "study/n_trials_planned": n_trials,
-            "study/max_epochs_per_trial": max_epochs,
-            "study/optimization_started": 1,
-        }
-        # Log without automatic stepping to avoid conflicts
-        for key, value in initial_data.items():
-            wandb.log({key: value}, commit=False)
-        wandb.log({})  # Commit the batch
+        # Log initial study information using summary only
+        wandb.run.summary["study/n_trials_planned"] = n_trials
+        wandb.run.summary["study/max_epochs_per_trial"] = max_epochs
+        wandb.run.summary["study/optimization_started"] = 1
     
     # Optimize with progress tracking
     try:
@@ -685,27 +652,18 @@ def optimize_hyperparameters(
                 pruned_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
                 failed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.FAIL])
                 
-                # Use the trial number as a consistent step for study progress
-                study_metrics = {
-                    "study/completed_trials": completed_trials,
-                    "study/pruned_trials": pruned_trials,
-                    "study/failed_trials": failed_trials,
-                    "study/total_trials": len(study.trials),
-                    "study/best_value_so_far": study.best_value if study.best_value is not None else 0.0,
-                    "study/progress_percent": (len(study.trials) / n_trials) * 100,
-                }
-                
-                # Log study metrics without automatic stepping to avoid conflicts
-                for key, value in study_metrics.items():
-                    wandb.log({key: value}, commit=False)
+                # Use only summary updates - no timeline logging to avoid step conflicts
+                wandb.run.summary["study/completed_trials"] = completed_trials
+                wandb.run.summary["study/pruned_trials"] = pruned_trials
+                wandb.run.summary["study/failed_trials"] = failed_trials
+                wandb.run.summary["study/total_trials"] = len(study.trials)
+                wandb.run.summary["study/best_value_so_far"] = study.best_value if study.best_value is not None else 0.0
+                wandb.run.summary["study/progress_percent"] = (len(study.trials) / n_trials) * 100
                 
                 # Log best parameters so far
                 if study.best_params:
                     for param_name, param_value in study.best_params.items():
-                        wandb.log({f"study/best_{param_name}": param_value}, commit=False)
-                
-                # Commit all study metrics at once
-                wandb.log({})
+                        wandb.run.summary[f"study/best_{param_name}"] = param_value
         
         # Add progress callback to existing callbacks
         if callbacks:
@@ -718,7 +676,8 @@ def optimize_hyperparameters(
     except Exception as e:
         logger.error(f"Optimization failed: {e}")
         if wandb_run:
-            wandb.log({"study/optimization_failed": 1, "study/error": str(e)})
+            wandb.run.summary["study/optimization_failed"] = 1
+            wandb.run.summary["study/error"] = str(e)
         raise
     
     # Log final study results to WandB
@@ -727,29 +686,24 @@ def optimize_hyperparameters(
         pruned_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
         failed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.FAIL])
         
-        final_study_data = {
-            "study/optimization_completed": 1,
-            "study/final_best_value": study.best_value if study.best_value is not None else 0.0,
-            "study/final_completed_trials": completed_trials,
-            "study/final_pruned_trials": pruned_trials,
-            "study/final_failed_trials": failed_trials,
-            "study/final_total_trials": len(study.trials),
-            "study/success_rate": (completed_trials / len(study.trials)) * 100 if study.trials else 0,
-        }
+        # Use only summary updates - no timeline logging
+        wandb.run.summary["study/optimization_completed"] = 1
+        wandb.run.summary["study/final_best_value"] = study.best_value if study.best_value is not None else 0.0
+        wandb.run.summary["study/final_completed_trials"] = completed_trials
+        wandb.run.summary["study/final_pruned_trials"] = pruned_trials
+        wandb.run.summary["study/final_failed_trials"] = failed_trials
+        wandb.run.summary["study/final_total_trials"] = len(study.trials)
+        wandb.run.summary["study/success_rate"] = (completed_trials / len(study.trials)) * 100 if study.trials else 0
         
-        # Log without automatic stepping to avoid conflicts
-        for key, value in final_study_data.items():
-            wandb.log({key: value}, commit=False)
-        
-        # Log best hyperparameters as a table
+        # Log best hyperparameters as a table (tables don't use steps)
         if study.best_params:
             best_params_table = wandb.Table(
                 columns=["Parameter", "Value"],
                 data=[[k, str(v)] for k, v in study.best_params.items()]
             )
-            wandb.log({"study/best_hyperparameters": best_params_table}, commit=False)
+            wandb.run.summary["study/best_hyperparameters"] = best_params_table
         
-        # Create trials summary table
+        # Create trials summary table (tables don't use steps)
         trials_data = []
         for trial in study.trials:
             row = [
@@ -766,7 +720,7 @@ def optimize_hyperparameters(
             columns=["Trial", "State", "Value", "Architecture", "Optimizer", "Learning Rate", "Batch Size", "Unknown Weight", "Patience"],
             data=trials_data
         )
-        wandb.log({"study/all_trials_summary": trials_table}, commit=False)
+        wandb.run.summary["study/all_trials_summary"] = trials_table
         
         # Commit all final study data at once
         wandb.log({})
