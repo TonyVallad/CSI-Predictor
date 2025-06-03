@@ -2,6 +2,9 @@
 torch>=1.9.0
 torchvision>=0.10.0
 
+# Transformers for RadDINO model
+transformers>=4.30.0
+
 # Data handling
 pandas>=1.3.0
 numpy>=1.21.0

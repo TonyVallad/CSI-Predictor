@@ -180,7 +180,7 @@ def create_optuna_config(trial: optuna.trial.Trial, base_config: Config) -> Conf
     # Model architecture optimization - using only available architectures
     model_arch = trial.suggest_categorical(
         'model_arch', 
-        ['ResNet50', 'CheXNet', 'Custom_1']  # Only use actually available ones
+        ['ResNet50', 'CheXNet', 'Custom_1', 'RadDINO']  # Only use actually available ones
     )
     
     # Optimizer hyperparameters
@@ -579,6 +579,24 @@ def clear_data_cache():
     logger.info("Data cache cleared")
 
 
+def get_search_space_info() -> Dict[str, Any]:
+    """Get search space information for logging."""
+    return {
+        "total_trials": 50,
+        "sampler": "TPE (Tree-structured Parzen Estimator)",
+        "pruner": "MedianPruner",
+        "available_architectures": ["ResNet50", "CheXNet", "Custom_1", "RadDINO"],
+        "search_space": {
+            "model_arch": ["ResNet50", "CheXNet", "Custom_1", "RadDINO"],
+            "optimizer": ["adam", "adamw", "sgd"],
+            "learning_rate": "log-uniform(1e-5, 1e-1)",
+            "batch_size": [16, 32, 64, 128],
+            "unknown_weight": "uniform(0.1, 1.0)",
+            "patience": "int-uniform(5, 20)"
+        }
+    }
+
+
 def optimize_hyperparameters(
     study_name: str = "csi_optimization",
     n_trials: int = 100,
@@ -638,9 +656,9 @@ def optimize_hyperparameters(
                 "pruner": pruner,
                 "optimization_direction": "maximize",
                 "target_metric": "val_f1_macro",
-                "available_architectures": ["ResNet50", "CheXNet", "Custom_1"],
+                "available_architectures": ["ResNet50", "CheXNet", "Custom_1", "RadDINO"],
                 "hyperparameter_space": {
-                    "model_arch": ["ResNet50", "CheXNet", "Custom_1"],
+                    "model_arch": ["ResNet50", "CheXNet", "Custom_1", "RadDINO"],
                     "optimizer": ["adam", "adamw", "sgd"],
                     "learning_rate": {"min": 1e-5, "max": 1e-1, "log": True},
                     "batch_size": [16, 32, 64, 128],
@@ -674,7 +692,7 @@ def optimize_hyperparameters(
     logger.info(f"Study name: {study_name}")
     logger.info(f"Max epochs per trial: {max_epochs}")
     logger.info(f"Sampler: {sampler}, Pruner: {pruner}")
-    logger.info(f"Available model architectures: ResNet50, CheXNet, Custom_1")
+    logger.info(f"Available model architectures: ResNet50, CheXNet, Custom_1, RadDINO")
     
     # Track optimization progress
     if wandb_run:

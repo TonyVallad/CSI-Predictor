@@ -126,25 +126,26 @@ def get_cached_data_loaders(config: Config) -> tuple[DataLoader, DataLoader, Dat
     return train_loader, val_loader, test_loader
 
 
-def create_sweep_config(base_config: Config) -> Dict[str, Any]:
+def get_sweep_config(method: str = "bayes", metric_name: str = "val_f1_macro") -> Dict[str, Any]:
     """
-    Create W&B sweep configuration.
+    Generate sweep configuration for W&B.
     
     Args:
-        base_config: Base configuration for defaults
+        method: Optimization method ('bayes', 'grid', 'random')
+        metric_name: Metric to optimize
         
     Returns:
         W&B sweep configuration dictionary
     """
-    sweep_config = {
-        'method': 'bayes',  # Bayesian optimization (TPE equivalent)
+    return {
+        'method': method,
         'metric': {
-            'name': 'val_f1_macro',
-            'goal': 'maximize'
+            'goal': 'maximize',
+            'name': metric_name
         },
         'parameters': {
             'model_arch': {
-                'values': ['ResNet50', 'CheXNet', 'Custom_1']
+                'values': ['ResNet50', 'CheXNet', 'Custom_1', 'RadDINO']
             },
             'optimizer': {
                 'values': ['adam', 'adamw', 'sgd']
@@ -163,28 +164,10 @@ def create_sweep_config(base_config: Config) -> Dict[str, Any]:
                 'max': 1.0
             },
             'patience': {
-                'values': [5, 8, 10, 15, 20]
-            },
-            # Optimizer-specific parameters
-            'weight_decay': {
-                'distribution': 'log_uniform_values',
-                'min': 1e-6,
-                'max': 1e-2
-            },
-            'momentum': {
-                'distribution': 'uniform',
-                'min': 0.5,
-                'max': 0.99
+                'values': list(range(5, 21))  # 5 to 20
             }
-        },
-        'early_terminate': {
-            'type': 'hyperband',
-            'min_iter': 3,
-            'eta': 2
         }
     }
-    
-    return sweep_config
 
 
 def train_sweep_run(base_config: Config, max_epochs: int = 50):
@@ -351,7 +334,7 @@ def initialize_sweep(
     _GLOBAL_DATA_CACHE.clear()
     
     # Create sweep configuration
-    sweep_config = create_sweep_config(base_config)
+    sweep_config = get_sweep_config(method="bayes", metric_name="val_f1_macro")
     
     # Initialize the sweep
     sweep_id = wandb.sweep(

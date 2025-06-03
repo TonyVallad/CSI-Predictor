@@ -53,6 +53,9 @@ MODEL_INPUT_SIZES = {
     'densenet201': (224, 224),
     'vit_base_patch16_224': (224, 224),
     'vit_large_patch16_224': (224, 224),
+    'chexnet': (224, 224),
+    'custom1': (224, 224),
+    'raddino': (518, 518),  # RadDINO's expected input size from Microsoft
 }
 
 # CSI zone column names (6 zones)
@@ -228,6 +231,29 @@ def get_default_transforms(phase: str = "train", model_arch: str = "resnet50") -
     # Get input size for model architecture
     input_size = MODEL_INPUT_SIZES.get(model_arch, (224, 224))
     
+    # Special handling for RadDINO which has its own preprocessing
+    if model_arch.lower().replace('_', '').replace('-', '') == 'raddino':
+        if phase == "train":
+            return transforms.Compose([
+                transforms.Resize(input_size),
+                transforms.Grayscale(num_output_channels=3),  # Convert grayscale to 3-channel
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(degrees=10),
+                transforms.ColorJitter(brightness=0.1, contrast=0.1),
+                transforms.ToTensor(),
+                # RadDINO uses ImageNet normalization
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+        else:  # val or test
+            return transforms.Compose([
+                transforms.Resize(input_size),
+                transforms.Grayscale(num_output_channels=3),  # Convert grayscale to 3-channel
+                transforms.ToTensor(),
+                # RadDINO uses ImageNet normalization
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+    
+    # Standard transforms for other models
     if phase == "train":
         return transforms.Compose([
             transforms.Resize(input_size),

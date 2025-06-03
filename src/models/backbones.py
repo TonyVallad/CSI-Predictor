@@ -1,14 +1,18 @@
 """
 Feature extraction backbones for CSI-Predictor.
-Supports multiple architectures including ResNet, CheXNet, and custom CNNs.
+Supports multiple architectures including ResNet, CheXNet, custom CNNs, and RadDINO.
 """
 
 import torch
 import torch.nn as nn
 from torchvision import models
 from torchvision.models import ResNet50_Weights, DenseNet121_Weights
+from transformers import AutoModel, AutoImageProcessor
 from loguru import logger
 from typing import Dict, Any
+
+# Import RadDINO implementation
+from .rad_dino import RadDINOBackboneOnly
 
 
 class CustomCNNBackbone(nn.Module):
@@ -141,6 +145,38 @@ class ResNet50Backbone(nn.Module):
         return features
 
 
+class RadDINOBackbone(nn.Module):
+    """
+    RadDINO backbone: Microsoft's Rad-DINO model for chest radiography.
+    Based on Vision Transformer architecture specifically trained on chest X-rays.
+    """
+    
+    def __init__(self, pretrained: bool = True):
+        """
+        Initialize RadDINO backbone.
+        
+        Args:
+            pretrained: Whether to use pretrained weights (always True for RadDINO)
+        """
+        super().__init__()
+        
+        # Use the dedicated RadDINO implementation
+        self.backbone = RadDINOBackboneOnly(pretrained=pretrained)
+        self.feature_dim = self.backbone.feature_dim
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through RadDINO backbone.
+        
+        Args:
+            x: Input tensor [batch_size, channels, height, width]
+            
+        Returns:
+            Feature tensor [batch_size, feature_dim]
+        """
+        return self.backbone(x)
+
+
 def get_backbone(name: str, pretrained: bool = True) -> nn.Module:
     """
     Factory function to create backbone networks.
@@ -170,14 +206,11 @@ def get_backbone(name: str, pretrained: bool = True) -> nn.Module:
         return CustomCNNBackbone(input_channels=3)
     
     elif name == "raddino":
-        # Placeholder for future Rad_DINO implementation
-        logger.warning("Rad_DINO backbone not yet implemented, falling back to ResNet50")
-        # TODO: Implement Rad_DINO when available
-        # return RadDINOBackbone(pretrained=pretrained)
-        return ResNet50Backbone(pretrained=pretrained)
+        logger.info(f"Creating RadDINO backbone (pretrained={pretrained})")
+        return RadDINOBackbone(pretrained=pretrained)
     
     else:
-        available_backbones = ["ResNet50", "CheXNet", "Custom_1", "Rad_DINO"]
+        available_backbones = ["ResNet50", "CheXNet", "Custom_1", "RadDINO"]
         raise ValueError(f"Unsupported backbone: {name}. Available: {available_backbones}")
 
 
@@ -197,7 +230,7 @@ def get_backbone_feature_dim(name: str) -> int:
         "resnet50": 2048,
         "chexnet": 1024,
         "custom1": 1024,
-        "raddino": 2048  # Placeholder, same as ResNet50
+        "raddino": 768  # RadDINO feature dimension
     }
     
     if name in backbone_dims:
@@ -212,5 +245,6 @@ __all__ = [
     'get_backbone_feature_dim',
     'ResNet50Backbone',
     'CheXNetBackbone',
-    'CustomCNNBackbone'
+    'CustomCNNBackbone',
+    'RadDINOBackbone'
 ] 

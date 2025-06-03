@@ -195,7 +195,7 @@ python main.py --mode sweep-agent --sweep-id "your_sweep_id" --count 10
 - **No Step Conflicts**: Clean logging without technical issues
 
 **Optimized Hyperparameters:**
-- **Model Architecture**: ResNet50, CheXNet, Custom_1
+- **Model Architecture**: ResNet50, CheXNet, Custom_1, RadDINO
 - **Optimizer**: Adam, AdamW, SGD with conditional weight decay and momentum
 - **Learning Rate**: 1e-5 to 1e-1 (log uniform distribution)
 - **Batch Size**: 16, 32, 64, 128
@@ -383,7 +383,51 @@ The project supports multiple backbone architectures for feature extraction:
 - **EfficientNet**: efficientnet_b0 through efficientnet_b4
 - **DenseNet**: densenet121, densenet169, densenet201 (including CheXNet)
 - **Vision Transformers**: vit_base_patch16_224, vit_large_patch16_224
-- **Custom architectures**: Custom_1 (simple CNN baseline), Rad_DINO
+- **Custom architectures**: Custom_1 (simple CNN baseline), RadDINO (Microsoft's chest X-ray specialist)
+
+### RadDINO Architecture
+
+**RadDINO** (Radiological Diagnosis Network) is Microsoft's specialized Vision Transformer model designed specifically for chest X-ray analysis:
+
+**Key Features:**
+- **Domain-Specific**: Pre-trained on large-scale chest X-ray datasets
+- **Vision Transformer**: Advanced transformer architecture with 768-dimensional features  
+- **Medical Imaging**: Optimized for radiological image analysis
+- **Input Size**: 518×518 pixels (higher resolution than standard models)
+- **Repository**: `microsoft/rad-dino` on Hugging Face
+
+**Technical Specifications:**
+- **Backbone**: Microsoft Rad-DINO transformer
+- **Feature Dimension**: 768 (vs 2048 for ResNet50, 1024 for CheXNet)
+- **Input Processing**: Specialized preprocessing for chest X-rays
+- **Pretrained Weights**: Always uses Microsoft's pretrained weights
+
+**Usage Example:**
+```bash
+# Use RadDINO in training
+python main.py --mode train --config config.ini
+# With MODEL_ARCH=RadDINO in config.ini
+
+# Or in hyperparameter optimization  
+python main.py --mode sweep --sweep-name "raddino_optimization"
+```
+
+**Performance Considerations:**
+- **Memory**: Higher memory usage due to larger input size (518×518 vs 224×224)
+- **Speed**: Slower than CNNs but potentially superior accuracy for chest X-rays
+- **Specialized**: Purpose-built for radiological image analysis
+- **Download**: First run downloads ~300MB model weights automatically
+
+### Model Selection Guide
+
+| Architecture | Use Case | Pros | Cons |
+|-------------|----------|------|------|
+| **ResNet50** | General baseline | Fast, proven, low memory | Generic features |
+| **CheXNet** | Medical imaging | Domain-adapted, moderate size | DenseNet complexity |
+| **Custom_1** | Quick testing | Very fast, lightweight | Limited features |
+| **RadDINO** | Production accuracy | SOTA for chest X-rays, specialized | Slower, higher memory |
+
+**Recommendation**: Use **RadDINO** for highest accuracy on chest X-ray CSI prediction, **ResNet50** for balanced performance, or **CheXNet** for medical domain baseline.
 
 The model predicts CSI scores for 6 zones of chest X-rays using multi-output classification (5 classes per zone: 0-3 for severity, 4 for ungradable).
 

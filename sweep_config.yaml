@@ -10,7 +10,7 @@ metric:
 parameters:
   # Model architecture
   model_arch:
-    values: ['ResNet50', 'CheXNet', 'Custom_1']
+    values: ['ResNet50', 'CheXNet', 'Custom_1', 'RadDINO']
   
   # Optimizer settings
   optimizer:
