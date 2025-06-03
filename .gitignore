@@ -180,7 +180,7 @@ cython_debug/
 wandb/
 
 # Models
-models/
+/models/
 
 # Graphs
-graphs/
+/graphs/
