@@ -63,6 +63,7 @@ class Config:
         
         # Model Configuration
         model_arch: Model architecture name
+        use_official_processor: Whether to use official RadDINO processor
         
         # Internal
         _env_vars: Environment variables dict
@@ -95,6 +96,7 @@ class Config:
     
     # Model Configuration
     model_arch: str = "resnet50"
+    use_official_processor: bool = False  # Whether to use official RadDINO processor
     
     # Internal fields (not for external configuration)
     _env_vars: Dict[str, Any] = field(default_factory=dict, repr=False)
@@ -362,6 +364,7 @@ class ConfigLoader:
             
             # Model Configuration
             model_arch=self.get_config_value("MODEL_ARCH", "resnet50", str),
+            use_official_processor=self.get_config_value("USE_OFFICIAL_PROCESSOR", False, bool),
             
             # Internal
             _env_vars=self._env_vars.copy(),

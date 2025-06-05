@@ -12,6 +12,10 @@ parameters:
   model_arch:
     values: ['ResNet50', 'CheXNet', 'Custom_1', 'RadDINO']
   
+  # RadDINO-specific preprocessing (conditional on model_arch being RadDINO)
+  use_official_processor:
+    values: [true, false]
+  
   # Optimizer settings
   optimizer:
     values: ['adam', 'adamw', 'sgd']

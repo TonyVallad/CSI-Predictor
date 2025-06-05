@@ -35,6 +35,13 @@ import matplotlib.patches as patches
 from .config import Config, cfg
 from .data_split import pytorch_train_val_test_split
 
+# Try to import transformers for RadDINO processor
+try:
+    from transformers import AutoImageProcessor
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+    AutoImageProcessor = None
 
 # Model architecture to input size mapping
 MODEL_INPUT_SIZES = {
@@ -63,6 +70,27 @@ CSI_COLUMNS = ['right_sup', 'left_sup', 'right_mid', 'left_mid', 'right_inf', 'l
 
 # CSI class mapping: 0-3 are actual scores, 4 is unknown/ungradable
 CSI_UNKNOWN_CLASS = 4
+
+
+def get_raddino_processor(use_official: bool = False):
+    """
+    Get RadDINO image processor.
+    
+    Args:
+        use_official: Whether to use the official AutoImageProcessor
+        
+    Returns:
+        AutoImageProcessor or None
+    """
+    if use_official and TRANSFORMERS_AVAILABLE:
+        try:
+            repo = "microsoft/rad-dino"
+            processor = AutoImageProcessor.from_pretrained(repo, use_fast=True)
+            return processor
+        except Exception as e:
+            print(f"Warning: Failed to load RadDINO processor: {e}")
+            return None
+    return None
 
 
 def load_csv_data(csv_path: str) -> pd.DataFrame:
@@ -217,19 +245,28 @@ def split_data_stratified(
         return train_df, val_df, test_df
 
 
-def get_default_transforms(phase: str = "train", model_arch: str = "resnet50") -> transforms.Compose:
+def get_default_transforms(phase: str = "train", model_arch: str = "resnet50", use_official_processor: bool = False) -> transforms.Compose:
     """
     Get default image transformations for different phases.
     
     Args:
         phase: Phase name ('train', 'val', 'test')
         model_arch: Model architecture name for input size
+        use_official_processor: Whether to use official RadDINO processor (RadDINO only)
         
     Returns:
         Composed transformations
     """
     # Get input size for model architecture
     input_size = MODEL_INPUT_SIZES.get(model_arch, (224, 224))
+    
+    # Special handling for RadDINO with official processor
+    if (model_arch.lower().replace('_', '').replace('-', '') == 'raddino' and 
+        use_official_processor):
+        # Return minimal transforms - the official processor will handle everything
+        return transforms.Compose([
+            transforms.ToTensor(),  # Convert to tensor (processor expects PIL images)
+        ])
     
     # Special handling for RadDINO which has its own preprocessing
     if model_arch.lower().replace('_', '').replace('-', '') == 'raddino':
@@ -287,7 +324,9 @@ class CSIDataset(Dataset):
         data_path: str,
         transform: Optional[transforms.Compose] = None,
         phase: str = "train",
-        load_to_memory: bool = False
+        load_to_memory: bool = False,
+        use_official_processor: bool = False,
+        model_arch: str = "resnet50"
     ):
         """
         Initialize CSI dataset.
@@ -298,15 +337,28 @@ class CSIDataset(Dataset):
             transform: Image transformations (optional)
             phase: Dataset phase for default transforms
             load_to_memory: Whether to pre-cache images in memory
+            use_official_processor: Whether to use official RadDINO processor
+            model_arch: Model architecture for default transforms
         """
         self.dataframe = dataframe.reset_index(drop=True)
         self.data_path = Path(data_path)
         self.phase = phase
         self.load_to_memory = load_to_memory
+        self.use_official_processor = use_official_processor
+        self.model_arch = model_arch
+        
+        # Set up processor for RadDINO if needed
+        self.raddino_processor = None
+        if (self.model_arch.lower().replace('_', '').replace('-', '') == 'raddino' and 
+            self.use_official_processor):
+            self.raddino_processor = get_raddino_processor(use_official=True)
+            if self.raddino_processor is None:
+                print("Warning: Failed to load RadDINO processor, falling back to standard transforms")
+                self.use_official_processor = False
         
         # Set default transform if none provided
         if transform is None:
-            self.transform = get_default_transforms(phase, cfg.model_arch)
+            self.transform = get_default_transforms(phase, model_arch, use_official_processor)
         else:
             self.transform = transform
         
@@ -320,6 +372,8 @@ class CSIDataset(Dataset):
             self._cache_images()
         
         print(f"Initialized {phase} dataset with {len(self.dataframe)} samples")
+        if self.use_official_processor and self.raddino_processor:
+            print(f"Using official RadDINO AutoImageProcessor")
         if self.load_to_memory:
             print(f"Pre-cached {len(self.cached_images)} images in memory")
     
@@ -348,7 +402,7 @@ class CSIDataset(Dataset):
     
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Get dataset item.
+        Get dataset item with optional RadDINO processor support.
         
         Args:
             idx: Item index
@@ -378,9 +432,22 @@ class CSIDataset(Dataset):
             except Exception as e:
                 raise RuntimeError(f"Failed to load image {image_path}: {e}")
         
-        # Apply transformations
-        if self.transform:
-            image = self.transform(image)
+        # Apply preprocessing
+        if (self.use_official_processor and self.raddino_processor and 
+            self.model_arch.lower().replace('_', '').replace('-', '') == 'raddino'):
+            # Use official RadDINO processor
+            try:
+                inputs = self.raddino_processor(images=image, return_tensors="pt")
+                image = inputs['pixel_values'].squeeze(0)  # Remove batch dimension
+            except Exception as e:
+                print(f"Warning: RadDINO processor failed for image {idx}: {e}")
+                # Fall back to standard transforms
+                if self.transform:
+                    image = self.transform(image)
+        else:
+            # Use standard transforms
+            if self.transform:
+                image = self.transform(image)
         
         # Extract CSI labels (6 zones) as classification targets
         labels = []
@@ -435,7 +502,7 @@ def create_data_loaders(
     config: Optional[Config] = None
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
-    Create data loaders for training, validation, and testing.
+    Create data loaders for training, validation, and testing with optional RadDINO processor support.
     
     Args:
         train_df: Training DataFrame (loads from CSV if None)
@@ -449,34 +516,43 @@ def create_data_loaders(
     if config is None:
         config = cfg
     
+    # Get processor setting for RadDINO
+    use_official_processor = getattr(config, 'use_official_processor', False)
+    
     # Load and split data if DataFrames not provided
     if train_df is None or val_df is None or test_df is None:
         print("Loading and splitting data...")
         train_df, val_df, test_df = load_and_split_data()
     
-    # Create datasets
+    # Create datasets with processor option
     train_dataset = CSIDataset(
         dataframe=train_df,
         data_path=config.data_path,
-        transform=get_default_transforms("train", config.model_arch),
+        transform=get_default_transforms("train", config.model_arch, use_official_processor),
         phase="train",
-        load_to_memory=config.load_data_to_memory
+        load_to_memory=config.load_data_to_memory,
+        use_official_processor=use_official_processor,
+        model_arch=config.model_arch
     )
     
     val_dataset = CSIDataset(
         dataframe=val_df,
         data_path=config.data_path,
-        transform=get_default_transforms("val", config.model_arch),
+        transform=get_default_transforms("val", config.model_arch, use_official_processor),
         phase="val",
-        load_to_memory=config.load_data_to_memory
+        load_to_memory=config.load_data_to_memory,
+        use_official_processor=use_official_processor,
+        model_arch=config.model_arch
     )
     
     test_dataset = CSIDataset(
         dataframe=test_df,
         data_path=config.data_path,
-        transform=get_default_transforms("test", config.model_arch),
+        transform=get_default_transforms("test", config.model_arch, use_official_processor),
         phase="test",
-        load_to_memory=config.load_data_to_memory
+        load_to_memory=config.load_data_to_memory,
+        use_official_processor=use_official_processor,
+        model_arch=config.model_arch
     )
     
     # Create data loaders

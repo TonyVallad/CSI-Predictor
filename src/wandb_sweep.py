@@ -56,7 +56,9 @@ def get_cached_data_loaders(config: Config) -> tuple[DataLoader, DataLoader, Dat
         config.data_dir,
         config.csv_dir,
         config.labels_csv,
-        config.load_data_to_memory
+        config.load_data_to_memory,
+        getattr(config, 'use_official_processor', False),  # Include processor in cache key
+        config.model_arch  # Include model arch in cache key
     )
     
     # Check if we have cached datasets
@@ -82,6 +84,7 @@ def get_cached_data_loaders(config: Config) -> tuple[DataLoader, DataLoader, Dat
             batch_size=32,  # Use standard batch size for caching
             patience=config.patience,
             n_epochs=config.n_epochs,
+            use_official_processor=getattr(config, 'use_official_processor', False),
             _env_vars=config._env_vars.copy(),
             _ini_vars=config._ini_vars.copy(),
             _missing_keys=config._missing_keys.copy()
@@ -163,6 +166,9 @@ def get_sweep_config(method: str = "bayes", metric_name: str = "val_f1_weighted"
             'model_arch': {
                 'values': available_architectures
             },
+            'use_official_processor': {
+                'values': [True, False]
+            },
             'optimizer': {
                 'values': ['adam', 'adamw', 'sgd']
             },
@@ -226,6 +232,7 @@ def train_sweep_run(base_config: Config, max_epochs: int = 50):
             learning_rate=config_dict.get('learning_rate', base_config.learning_rate),
             batch_size=config_dict.get('batch_size', base_config.batch_size),
             patience=config_dict.get('patience', base_config.patience),
+            use_official_processor=config_dict.get('use_official_processor', False),
             
             # Keep other training params from base config
             n_epochs=max_epochs,
@@ -327,6 +334,12 @@ def train_sweep_run(base_config: Config, max_epochs: int = 50):
         })
         
         logger.info(f"Sweep run {run.name} completed with best val F1: {best_val_f1:.4f}")
+
+        # Log processor choice for RadDINO
+        if updated_config.model_arch.lower().replace('_', '').replace('-', '') == 'raddino':
+            processor_type = "official" if updated_config.use_official_processor else "standard"
+            logger.info(f"RadDINO using {processor_type} preprocessing")
+            wandb.log({'raddino_processor_type': processor_type})
 
 
 def initialize_sweep(
