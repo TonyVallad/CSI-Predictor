@@ -320,10 +320,10 @@ def train_model(config) -> None:
     early_stopping = EarlyStopping(patience=config.patience)
     
     # Generate consistent names for this training run
-    run_name = make_run_name(config)
-    train_model_name = make_model_name(config, task_tag="Tr")
-    logger.info(f"Training run name: {run_name}")
+    train_model_name = make_model_name(config)
+    run_name = make_run_name(train_model_name, task_tag="Tr")
     logger.info(f"Training model name: {train_model_name}")
+    logger.info(f"Training run name: {run_name}")
     
     # Initialize wandb
     use_wandb = False
@@ -472,12 +472,12 @@ def train_model(config) -> None:
     # Generate training curves
     if len(train_losses) > 0:
         logger.info("Generating training curves...")
-        graphs_dir = Path(config.graph_dir) / "training_curves"
+        graphs_dir = Path(config.graph_dir) / train_model_name / "training_curves"
         plot_training_curves(
             train_losses, val_losses,
             train_accuracies, val_accuracies,
             train_f1_scores, val_f1_scores,
-            str(graphs_dir), run_name if use_wandb else "training_run"
+            str(graphs_dir), run_name
         )
     
     if use_wandb:

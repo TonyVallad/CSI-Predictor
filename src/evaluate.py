@@ -18,9 +18,11 @@ from .models import CSIModel, build_model
 from .config import cfg, get_config
 from .metrics import compute_pytorch_f1_metrics, compute_accuracy, compute_confusion_matrix
 from .utils import (
-    logger, make_run_name, make_model_name, seed_everything, log_config, 
+    EarlyStopping, MetricsTracker, calculate_class_weights,
+    logger, make_run_name, make_model_name, seed_everything, log_config,
     create_roc_curves, create_precision_recall_curves,
-    create_confusion_matrix_grid, create_roc_curves_grid, create_precision_recall_curves_grid
+    create_confusion_matrix_grid, create_roc_curves_grid, create_precision_recall_curves_grid,
+    create_model_name_from_existing
 )
 
 
@@ -704,17 +706,13 @@ def save_predictions(
 
 def evaluate_model(config) -> None:
     """
-    Main evaluation function with comprehensive reporting and WandB logging.
+    Evaluate a trained CSI-Predictor model on validation and test sets.
     
     Args:
         config: Configuration object
     """
     # Set seed for reproducibility
     seed_everything(42)
-    
-    # Generate consistent model name for this evaluation run
-    eval_model_name = make_model_name(config, task_tag="Eval")
-    logger.info(f"Evaluation model name: {eval_model_name}")
     
     # Log configuration
     log_config(config)
@@ -737,6 +735,12 @@ def evaluate_model(config) -> None:
     latest_model = max(model_files, key=lambda p: p.stat().st_mtime)
     logger.info(f"Using model: {latest_model}")
     
+    # Extract model name from the file and create evaluation run name
+    eval_model_name = create_model_name_from_existing(str(latest_model))
+    eval_run_name = make_run_name(eval_model_name, task_tag="Eval")
+    logger.info(f"Model name: {eval_model_name}")
+    logger.info(f"Evaluation run name: {eval_run_name}")
+
     model = load_trained_model(str(latest_model), device)
     
     # Create data loaders
@@ -810,8 +814,8 @@ def evaluate_model(config) -> None:
     save_predictions(test_predictions, test_targets, output_dir / "test_predictions.csv", zone_names)
     
     # Save confusion matrix graphs
-    save_confusion_matrix_graphs(val_confusion_matrices, config, eval_model_name, "validation")
-    save_confusion_matrix_graphs(test_confusion_matrices, config, eval_model_name, "test")
+    save_confusion_matrix_graphs(val_confusion_matrices, config, eval_run_name, "validation")
+    save_confusion_matrix_graphs(test_confusion_matrices, config, eval_run_name, "test")
     
     # Create and save ROC curves
     logger.info("Creating ROC curves...")
@@ -847,12 +851,12 @@ def evaluate_model(config) -> None:
     # Confusion matrix grids
     create_confusion_matrix_grid(
         val_confusion_matrices, str(graphs_dir), "validation",
-        eval_model_name
+        eval_run_name
     )
     
     create_confusion_matrix_grid(
         test_confusion_matrices, str(graphs_dir), "test",
-        eval_model_name
+        eval_run_name
     )
     
     # ROC curves grids
@@ -883,7 +887,7 @@ def evaluate_model(config) -> None:
         val_overall_metrics, test_overall_metrics,
         val_confusion_matrices, test_confusion_matrices,
         val_classification_reports, test_classification_reports,
-        config, str(latest_model), eval_model_name
+        config, str(latest_model), eval_run_name
     )
     
     # Print summary

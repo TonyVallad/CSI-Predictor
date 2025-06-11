@@ -670,23 +670,24 @@ def create_debug_dataset(
     print(f"  Samples: {num_samples}")
 
 
-def make_model_name(cfg, task_tag: str = "Tr", extra_info: str = "") -> str:
+def make_model_name(cfg, extra_info: str = "") -> str:
     """
     Create a structured model name with the format:
-    [YYYYMMDD_HHMMSS]_[ModelName]_[TaskTag]_[ExtraInfo]
+    [YYYYMMDD_HHMMSS]_[ModelName]_[ExtraInfo]
+    
+    This name stays consistent across training and evaluation.
     
     Args:
         cfg: Configuration object
-        task_tag: Task identifier (Tr=Training, Va=Validation, Te=Test, Eval=Evaluation, Infer=Inference)
         extra_info: Optional extra information (dataset slice, augmentation tag, resolution, hyperparam ID)
         
     Returns:
-        Formatted model name
+        Formatted model name (without task tag)
         
     Examples:
-        20250611_093054_ResNet50_Tr
-        20250611_093054_RadDINO_Eval_batch64
-        20250611_093054_ViT-B_Infer_518x518
+        20250611_093054_ResNet50
+        20250611_093054_RadDINO_batch64
+        20250611_093054_ViT-B_518x518
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
@@ -694,7 +695,7 @@ def make_model_name(cfg, task_tag: str = "Tr", extra_info: str = "") -> str:
     model_arch = cfg.model_arch.replace("_", "-").replace(" ", "-")
     
     # Build the name components
-    name_parts = [timestamp, model_arch, task_tag]
+    name_parts = [timestamp, model_arch]
     
     # Add extra info if provided
     if extra_info:
@@ -703,20 +704,50 @@ def make_model_name(cfg, task_tag: str = "Tr", extra_info: str = "") -> str:
     return "_".join(name_parts)
 
 
-def make_run_name(cfg) -> str:
+def make_run_name(model_name: str, task_tag: str = "Tr") -> str:
     """
-    Create a timestamped run name for experiments.
+    Create a run name from model name and task tag.
     
     Args:
-        cfg: Configuration object
+        model_name: Base model name (from make_model_name)
+        task_tag: Task identifier (Tr=Training, Eval=Evaluation, Infer=Inference)
         
     Returns:
-        Formatted run name with timestamp
+        Formatted run name with task tag
+        
+    Examples:
+        20250611_093054_ResNet50_Tr
+        20250611_093054_ResNet50_Eval
+    """
+    return f"{model_name}_{task_tag}"
+
+
+def create_model_name_from_existing(existing_model_path: str) -> str:
+    """
+    Extract model name from existing model file path.
+    
+    Args:
+        existing_model_path: Path to existing model file
+        
+    Returns:
+        Model name without .pth extension and without task tags
         
     Example:
-        20250611_093054_ResNet50_Tr
+        Input: "/path/to/20250611_093054_ResNet50_Tr.pth"
+        Output: "20250611_093054_ResNet50"
     """
-    return make_model_name(cfg, task_tag="Tr")
+    from pathlib import Path
+    
+    filename = Path(existing_model_path).stem  # Remove .pth extension
+    
+    # Remove task tags if present (Tr, Eval, Infer, etc.)
+    task_tags = ["_Tr", "_Eval", "_Infer", "_Va", "_Te"]
+    for tag in task_tags:
+        if filename.endswith(tag):
+            filename = filename[:-len(tag)]
+            break
+    
+    return filename
 
 
 def seed_everything(seed: int = 42) -> None:
@@ -1687,7 +1718,7 @@ __all__ = [
     'save_checkpoint', 'load_checkpoint', 'calculate_class_weights',
     'format_time', 'print_model_summary', 'create_dirs',
     'show_batch', 'visualize_data_distribution', 'analyze_missing_data',
-    'create_debug_dataset', 'make_run_name', 'make_model_name', 'pretty_print_config',
+    'create_debug_dataset', 'make_run_name', 'make_model_name', 'create_model_name_from_existing', 'pretty_print_config',
     'print_config', 'log_config', 'setup_logging', 'logger',
     'create_roc_curves', 'create_precision_recall_curves', 'plot_training_curves',
     'create_confusion_matrix_grid', 'create_roc_curves_grid', 'create_precision_recall_curves_grid'
