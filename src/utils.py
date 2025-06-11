@@ -855,6 +855,10 @@ def create_roc_curves(
     save_path = Path(save_dir)
     save_path.mkdir(parents=True, exist_ok=True)
     
+    # Create subfolder for zone-specific ROC curves
+    zone_roc_dir = save_path / "zones" / "roc_curves"
+    zone_roc_dir.mkdir(parents=True, exist_ok=True)
+    
     roc_metrics = {}
     
     # Color palette for classes
@@ -931,13 +935,14 @@ def create_roc_curves(
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         
-        # Save plot
+        # Save plot in zone subfolder
         filename = f"{split_name}_{zone_name}_roc_curves.png"
-        plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+        zone_save_path = zone_roc_dir / filename
+        plt.savefig(zone_save_path, dpi=300, bbox_inches='tight')
         plt.close()
         
         roc_metrics[zone_name] = roc_auc
-        logger.info(f"Saved ROC curves for {zone_name}: {save_path / filename}")
+        logger.info(f"Saved ROC curves for {zone_name}: {zone_save_path}")
     
     # Create overall ROC curves (macro-averaged across zones)
     plt.figure(figsize=(12, 8))
@@ -1056,6 +1061,10 @@ def create_precision_recall_curves(
     save_path = Path(save_dir)
     save_path.mkdir(parents=True, exist_ok=True)
     
+    # Create subfolder for zone-specific PR curves
+    zone_pr_dir = save_path / "zones" / "pr_curves"
+    zone_pr_dir.mkdir(parents=True, exist_ok=True)
+    
     pr_metrics = {}
     
     # Color palette for classes
@@ -1133,13 +1142,14 @@ def create_precision_recall_curves(
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         
-        # Save plot
+        # Save plot in zone subfolder
         filename = f"{split_name}_{zone_name}_pr_curves.png"
-        plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+        zone_save_path = zone_pr_dir / filename
+        plt.savefig(zone_save_path, dpi=300, bbox_inches='tight')
         plt.close()
         
         pr_metrics[zone_name] = pr_auc
-        logger.info(f"Saved PR curves for {zone_name}: {save_path / filename}")
+        logger.info(f"Saved PR curves for {zone_name}: {zone_save_path}")
     
     # Create overall PR curves (macro-averaged across zones)
     plt.figure(figsize=(12, 8))

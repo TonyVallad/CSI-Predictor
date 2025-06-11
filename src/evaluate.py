@@ -207,6 +207,10 @@ def save_confusion_matrix_graphs(
         "left_inf": "Patient Left Inferior"
     }
     
+    # Create subfolder for zone-specific confusion matrices
+    zone_graphs_dir = graphs_dir / "zones" / "confusion_matrices"
+    zone_graphs_dir.mkdir(parents=True, exist_ok=True)
+    
     for zone_name, cm in confusion_matrices.items():
         if cm.sum() > 0:  # Only create graphs for zones with data
             plt.figure(figsize=(8, 6))
@@ -231,9 +235,9 @@ def save_confusion_matrix_graphs(
             plt.ylabel('True CSI Score')
             plt.tight_layout()
             
-            # Save graph
+            # Save graph in zone subfolder
             filename = f"{split_name}_{zone_name}_confusion_matrix.png"
-            save_path = graphs_dir / filename
+            save_path = zone_graphs_dir / filename
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             plt.close()
             
