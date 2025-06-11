@@ -319,10 +319,15 @@ def train_model(config) -> None:
     # Early stopping
     early_stopping = EarlyStopping(patience=config.patience)
     
+    # Generate consistent names for this training run
+    run_name = make_run_name(config)
+    train_model_name = make_model_name(config, task_tag="Tr")
+    logger.info(f"Training run name: {run_name}")
+    logger.info(f"Training model name: {train_model_name}")
+    
     # Initialize wandb
     use_wandb = False
     try:
-        run_name = make_run_name(config)
         wandb.init(
             project="csi-predictor",
             name=run_name,
@@ -431,10 +436,8 @@ def train_model(config) -> None:
             best_val_loss = val_metrics["loss"]
             best_val_f1 = val_metrics["f1_macro"]
             
-            # Create model name with new structured format
-            model_name = make_model_name(config, task_tag="Tr")
-            
-            save_path = Path(config.get_model_path(model_name))
+            # Use consistent model name
+            save_path = Path(config.get_model_path(train_model_name))
             save_path.parent.mkdir(parents=True, exist_ok=True)
             
             torch.save({
@@ -444,11 +447,11 @@ def train_model(config) -> None:
                 'val_loss': val_metrics["loss"],
                 'val_f1_macro': val_metrics["f1_macro"],
                 'config': config,
-                'model_name': model_name,
+                'model_name': train_model_name,
                 'run_name': run_name if use_wandb else None
             }, save_path)
             
-            logger.info(f"Saved best model: {model_name}")
+            logger.info(f"Saved best model: {train_model_name}")
             logger.info(f"  Val Loss: {val_metrics['loss']:.4f}, Val F1: {val_metrics['f1_macro']:.4f}")
             
             # Log model artifact to wandb

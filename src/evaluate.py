@@ -252,7 +252,8 @@ def log_to_wandb(
     val_reports: Dict,
     test_reports: Dict,
     config,
-    model_path: str
+    model_path: str,
+    eval_model_name: str
 ) -> None:
     """
     Log evaluation results to Weights & Biases without console confusion matrices.
@@ -266,15 +267,15 @@ def log_to_wandb(
         test_reports: Test classification reports per zone
         config: Configuration object
         model_path: Path to the evaluated model
+        eval_model_name: Consistent model name for this evaluation run
     """
     try:
         import wandb
         
         # Initialize wandb run for evaluation
-        run_name = make_model_name(config, task_tag="Eval")
         wandb.init(
             project="csi-predictor-eval",
-            name=run_name,
+            name=eval_model_name,
             config={
                 "model_arch": config.model_arch,
                 "batch_size": config.batch_size,
@@ -711,6 +712,10 @@ def evaluate_model(config) -> None:
     # Set seed for reproducibility
     seed_everything(42)
     
+    # Generate consistent model name for this evaluation run
+    eval_model_name = make_model_name(config, task_tag="Eval")
+    logger.info(f"Evaluation model name: {eval_model_name}")
+    
     # Log configuration
     log_config(config)
     
@@ -805,13 +810,13 @@ def evaluate_model(config) -> None:
     save_predictions(test_predictions, test_targets, output_dir / "test_predictions.csv", zone_names)
     
     # Save confusion matrix graphs
-    save_confusion_matrix_graphs(val_confusion_matrices, config, make_model_name(config, task_tag="Eval"), "validation")
-    save_confusion_matrix_graphs(test_confusion_matrices, config, make_model_name(config, task_tag="Eval"), "test")
+    save_confusion_matrix_graphs(val_confusion_matrices, config, eval_model_name, "validation")
+    save_confusion_matrix_graphs(test_confusion_matrices, config, eval_model_name, "test")
     
     # Create and save ROC curves
     logger.info("Creating ROC curves...")
     class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
-    graphs_dir = Path(config.graph_dir) / make_model_name(config, task_tag="Eval")
+    graphs_dir = Path(config.graph_dir) / eval_model_name
     
     val_roc_metrics = create_roc_curves(
         val_probabilities, val_targets, zone_names, class_names,
@@ -842,12 +847,12 @@ def evaluate_model(config) -> None:
     # Confusion matrix grids
     create_confusion_matrix_grid(
         val_confusion_matrices, str(graphs_dir), "validation",
-        make_model_name(config, task_tag="Eval")
+        eval_model_name
     )
     
     create_confusion_matrix_grid(
         test_confusion_matrices, str(graphs_dir), "test",
-        make_model_name(config, task_tag="Eval")
+        eval_model_name
     )
     
     # ROC curves grids
@@ -878,7 +883,7 @@ def evaluate_model(config) -> None:
         val_overall_metrics, test_overall_metrics,
         val_confusion_matrices, test_confusion_matrices,
         val_classification_reports, test_classification_reports,
-        config, str(latest_model)
+        config, str(latest_model), eval_model_name
     )
     
     # Print summary
