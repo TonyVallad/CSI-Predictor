@@ -1353,8 +1353,6 @@ def create_confusion_matrix_grid(
     
     # Create 3x2 subplot grid
     fig, axes = plt.subplots(3, 2, figsize=(12, 16))
-    fig.suptitle(f'CSI Confusion Matrices - Anatomical Grid Layout\n({split_name.title()} Set)', 
-                 fontsize=16, fontweight='bold', y=0.98)
     
     for zone_name, (row, col) in zone_positions.items():
         ax = axes[row, col]
@@ -1403,7 +1401,11 @@ def create_confusion_matrix_grid(
     
     # Adjust layout first to make room for colorbar
     plt.tight_layout()
-    plt.subplots_adjust(top=0.94, right=0.75)
+    plt.subplots_adjust(top=0.90, right=0.75)
+    
+    # Add title centered over the grid area (not the entire figure)
+    fig.text(0.375, 0.95, f'CSI Confusion Matrices - Anatomical Grid Layout\n({split_name.title()} Set)', 
+             fontsize=16, fontweight='bold', ha='center', va='center')
     
     # Add a single colorbar for the entire figure
     if any(cm.sum() > 0 for cm in confusion_matrices.values()):
@@ -1476,8 +1478,6 @@ def create_roc_curves_grid(
     
     # Create 3x2 subplot grid
     fig, axes = plt.subplots(3, 2, figsize=(14, 18))
-    fig.suptitle(f'ROC Curves - Anatomical Grid Layout\n({split_name.title()} Set)', 
-                 fontsize=16, fontweight='bold', y=0.98)
     
     for zone_idx, zone_name in enumerate(zone_names):
         if zone_name not in zone_positions:
@@ -1544,7 +1544,11 @@ def create_roc_curves_grid(
         ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.subplots_adjust(top=0.94)
+    plt.subplots_adjust(top=0.90)
+    
+    # Add title centered over the grid area
+    fig.text(0.5, 0.95, f'ROC Curves - Anatomical Grid Layout\n({split_name.title()} Set)', 
+             fontsize=16, fontweight='bold', ha='center', va='center')
     
     # Save plot
     filename = f"{split_name}_roc_curves_grid.png"
@@ -1599,8 +1603,6 @@ def create_precision_recall_curves_grid(
     
     # Create 3x2 subplot grid
     fig, axes = plt.subplots(3, 2, figsize=(14, 18))
-    fig.suptitle(f'Precision-Recall Curves - Anatomical Grid Layout\n({split_name.title()} Set)', 
-                 fontsize=16, fontweight='bold', y=0.98)
     
     for zone_idx, zone_name in enumerate(zone_names):
         if zone_name not in zone_positions:
@@ -1664,7 +1666,11 @@ def create_precision_recall_curves_grid(
         ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.subplots_adjust(top=0.94)
+    plt.subplots_adjust(top=0.90)
+    
+    # Add title centered over the grid area
+    fig.text(0.5, 0.95, f'Precision-Recall Curves - Anatomical Grid Layout\n({split_name.title()} Set)', 
+             fontsize=16, fontweight='bold', ha='center', va='center')
     
     # Save plot
     filename = f"{split_name}_pr_curves_grid.png"
