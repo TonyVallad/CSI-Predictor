@@ -26,6 +26,9 @@ python main.py --mode eval
 
 ### 📈 Visual Analytics
 - **Confusion Matrix Heatmaps**: Per-zone confusion visualization
+- **ROC Curves**: Receiver Operating Characteristic curves for each zone and class
+- **Precision-Recall Curves**: PR curves for imbalanced class analysis
+- **Training Curves**: Loss, accuracy, and F1-score progression during training
 - **Performance Comparisons**: Validation vs test set analysis
 - **Class Distribution**: Label frequency analysis
 - **Interactive Dashboards**: Real-time WandB visualizations
@@ -56,6 +59,79 @@ The model predicts congestion scores for 6 anatomical zones:
 - **3**: Severe congestion
 - **4**: Ungradable (poor image quality, obscured)
 
+## Advanced Curve Analysis
+
+### 🎯 ROC Curves (Receiver Operating Characteristic)
+
+**Purpose**: Evaluate binary classification performance for each congestion class using One-vs-Rest approach.
+
+**Generated Curves**:
+- **Per-Zone ROC**: Individual ROC curves for each anatomical zone
+- **Per-Class ROC**: ROC curves for each congestion severity level (0-3)
+- **Macro-Averaged ROC**: Overall performance across all zones
+- **AUC Scores**: Area Under Curve metrics for quantitative comparison
+
+**Interpretation**:
+- **AUC = 1.0**: Perfect classifier
+- **AUC = 0.5**: Random classifier (diagonal line)
+- **Higher AUC**: Better discrimination between classes
+
+**Files Generated**:
+```
+graphs/[model_name]/
+├── validation_right_sup_roc_curves.png
+├── validation_left_sup_roc_curves.png
+├── validation_overall_roc_curves.png
+├── test_right_sup_roc_curves.png
+└── test_overall_roc_curves.png
+```
+
+### 📊 Precision-Recall Curves
+
+**Purpose**: Analyze performance on imbalanced medical data where certain congestion levels are rare.
+
+**Generated Curves**:
+- **Per-Zone PR**: Individual PR curves for each anatomical zone  
+- **Per-Class PR**: PR curves for each congestion severity level
+- **Macro-Averaged PR**: Overall performance across all zones
+- **Average Precision (AP)**: Summary metric for each curve
+
+**Medical Relevance**:
+- **High Precision**: Few false positive diagnoses (important for patient safety)
+- **High Recall**: Few missed congestion cases (important for comprehensive care)
+- **Better than ROC for imbalanced classes**: More appropriate for medical CSI data
+
+**Files Generated**:
+```
+graphs/[model_name]/
+├── validation_right_sup_pr_curves.png
+├── validation_left_sup_pr_curves.png  
+├── validation_overall_pr_curves.png
+├── test_right_sup_pr_curves.png
+└── test_overall_pr_curves.png
+```
+
+### 📈 Training Curves
+
+**Purpose**: Monitor model learning progression and detect overfitting/underfitting.
+
+**Generated Plots**:
+- **Loss Curves**: Training vs validation loss over epochs
+- **Accuracy Curves**: Training vs validation accuracy progression
+- **F1-Score Curves**: Training vs validation F1-score evolution
+
+**Usage for Model Development**:
+- **Overfitting Detection**: Validation metrics plateau while training improves
+- **Underfitting Detection**: Both training and validation metrics plateau early
+- **Learning Rate Optimization**: Smooth convergence vs oscillation patterns
+- **Early Stopping Validation**: Optimal stopping point identification
+
+**Files Generated**:
+```
+graphs/training_curves/
+└── [run_name]_training_curves.png
+```
+
 ## Evaluation Process
 
 ### 1. Model Loading
@@ -79,6 +155,8 @@ Processing complete: 100%
 Computing predictions...
 Calculating per-zone metrics...
 Generating confusion matrices...
+Creating ROC curves...
+Creating Precision-Recall curves...
 Creating comprehensive reports...
 ```
 
@@ -89,6 +167,12 @@ Reports saved to: docs/evaluation/
 - test_comprehensive_report.txt
 - validation_predictions.csv
 - test_predictions.csv
+
+Graphs saved to: graphs/[model_name]/
+- Confusion matrices (PNG)
+- ROC curves (PNG)  
+- Precision-Recall curves (PNG)
+- Training curves (PNG)
 ```
 
 ## Evaluation Outputs

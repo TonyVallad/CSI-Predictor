@@ -822,6 +822,847 @@ def log_config(cfg) -> None:
     logger.info(f"Configuration loaded:\n{config_str}")
 
 
+def create_roc_curves(
+    predictions_proba: np.ndarray,
+    targets: np.ndarray,
+    zone_names: List[str],
+    class_names: List[str],
+    save_dir: str,
+    split_name: str = "validation",
+    ignore_class: int = 4
+) -> Dict[str, Dict]:
+    """
+    Create ROC curves for multi-class, multi-zone CSI predictions.
+    
+    Args:
+        predictions_proba: Prediction probabilities [N, zones, classes]
+        targets: Ground truth labels [N, zones]
+        zone_names: Names of anatomical zones
+        class_names: Names of CSI classes
+        save_dir: Directory to save plots
+        split_name: Name of the data split
+        ignore_class: Class to ignore in evaluation (default: 4 for ungradable)
+        
+    Returns:
+        Dictionary with ROC metrics per zone and class
+    """
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import roc_curve, auc
+    from sklearn.preprocessing import label_binarize
+    import matplotlib.colors as mcolors
+    from pathlib import Path
+    
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    roc_metrics = {}
+    
+    # Color palette for classes
+    colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#7209B7']
+    
+    for zone_idx, zone_name in enumerate(zone_names):
+        zone_targets = targets[:, zone_idx]
+        zone_proba = predictions_proba[:, zone_idx, :]
+        
+        # Filter out ignore_class samples
+        valid_mask = zone_targets != ignore_class
+        if not valid_mask.any():
+            logger.warning(f"No valid samples for zone {zone_name}")
+            continue
+            
+        zone_targets_valid = zone_targets[valid_mask]
+        zone_proba_valid = zone_proba[valid_mask]
+        
+        # Create binary labels for each class (One-vs-Rest)
+        n_classes = len(class_names) - 1  # Exclude ungradable class
+        zone_targets_binary = label_binarize(zone_targets_valid, classes=list(range(n_classes)))
+        
+        # Handle case where only one class is present
+        if zone_targets_binary.shape[1] == 1:
+            # Add a dummy column for the missing classes
+            missing_classes = n_classes - zone_targets_binary.shape[1]
+            dummy_cols = np.zeros((zone_targets_binary.shape[0], missing_classes))
+            zone_targets_binary = np.hstack([zone_targets_binary, dummy_cols])
+        
+        # Create ROC curves
+        plt.figure(figsize=(10, 8))
+        
+        roc_auc = {}
+        for class_idx in range(n_classes):
+            if class_idx >= zone_proba_valid.shape[1]:
+                continue
+                
+            # Get probabilities for this class
+            class_proba = zone_proba_valid[:, class_idx]
+            
+            # Get binary targets for this class
+            if zone_targets_binary.shape[1] > class_idx:
+                class_targets = zone_targets_binary[:, class_idx]
+            else:
+                # This class wasn't present in the data
+                continue
+            
+            # Skip if no positive samples for this class
+            if class_targets.sum() == 0:
+                continue
+            
+            # Compute ROC curve
+            fpr, tpr, _ = roc_curve(class_targets, class_proba)
+            roc_auc[class_idx] = auc(fpr, tpr)
+            
+            # Plot ROC curve
+            plt.plot(
+                fpr, tpr,
+                color=colors[class_idx % len(colors)],
+                lw=2,
+                label=f'{class_names[class_idx]} (AUC = {roc_auc[class_idx]:.3f})'
+            )
+        
+        # Plot diagonal line
+        plt.plot([0, 1], [0, 1], 'k--', lw=1, alpha=0.5)
+        
+        # Formatting
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate', fontsize=12)
+        plt.ylabel('True Positive Rate', fontsize=12)
+        plt.title(f'ROC Curves - {zone_name.replace("_", " ").title()}\n({split_name.title()} Set)', fontsize=14)
+        plt.legend(loc="lower right")
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        # Save plot
+        filename = f"{split_name}_{zone_name}_roc_curves.png"
+        plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        roc_metrics[zone_name] = roc_auc
+        logger.info(f"Saved ROC curves for {zone_name}: {save_path / filename}")
+    
+    # Create overall ROC curves (macro-averaged across zones)
+    plt.figure(figsize=(12, 8))
+    
+    all_fpr = []
+    all_tpr = []
+    all_auc_scores = []
+    
+    for class_idx in range(n_classes):
+        class_fpr_list = []
+        class_tpr_list = []
+        class_auc_list = []
+        
+        for zone_idx, zone_name in enumerate(zone_names):
+            zone_targets = targets[:, zone_idx]
+            zone_proba = predictions_proba[:, zone_idx, :]
+            
+            # Filter out ignore_class samples
+            valid_mask = zone_targets != ignore_class
+            if not valid_mask.any():
+                continue
+                
+            zone_targets_valid = zone_targets[valid_mask]
+            zone_proba_valid = zone_proba[valid_mask]
+            
+            # Create binary labels for this class
+            class_targets = (zone_targets_valid == class_idx).astype(int)
+            
+            # Skip if no positive samples
+            if class_targets.sum() == 0:
+                continue
+                
+            if class_idx < zone_proba_valid.shape[1]:
+                class_proba = zone_proba_valid[:, class_idx]
+                fpr, tpr, _ = roc_curve(class_targets, class_proba)
+                class_fpr_list.append(fpr)
+                class_tpr_list.append(tpr)
+                class_auc_list.append(auc(fpr, tpr))
+        
+        if class_auc_list:
+            # Compute macro-averaged ROC for this class
+            mean_auc = np.mean(class_auc_list)
+            
+            # Interpolate all ROC curves to common FPR points
+            mean_fpr = np.linspace(0, 1, 100)
+            interp_tpr_list = []
+            
+            for fpr, tpr in zip(class_fpr_list, class_tpr_list):
+                interp_tpr = np.interp(mean_fpr, fpr, tpr)
+                interp_tpr[0] = 0.0  # Ensure starts at 0
+                interp_tpr_list.append(interp_tpr)
+            
+            if interp_tpr_list:
+                mean_tpr = np.mean(interp_tpr_list, axis=0)
+                mean_tpr[-1] = 1.0  # Ensure ends at 1
+                
+                plt.plot(
+                    mean_fpr, mean_tpr,
+                    color=colors[class_idx % len(colors)],
+                    lw=3,
+                    label=f'{class_names[class_idx]} (Macro AUC = {mean_auc:.3f})'
+                )
+    
+    # Plot diagonal line
+    plt.plot([0, 1], [0, 1], 'k--', lw=1, alpha=0.5)
+    
+    # Formatting
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate', fontsize=12)
+    plt.ylabel('True Positive Rate', fontsize=12)
+    plt.title(f'Macro-Averaged ROC Curves Across All Zones\n({split_name.title()} Set)', fontsize=14)
+    plt.legend(loc="lower right")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # Save overall plot
+    filename = f"{split_name}_overall_roc_curves.png"
+    plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved overall ROC curves: {save_path / filename}")
+    return roc_metrics
+
+
+def create_precision_recall_curves(
+    predictions_proba: np.ndarray,
+    targets: np.ndarray,
+    zone_names: List[str],
+    class_names: List[str],
+    save_dir: str,
+    split_name: str = "validation",
+    ignore_class: int = 4
+) -> Dict[str, Dict]:
+    """
+    Create Precision-Recall curves for multi-class, multi-zone CSI predictions.
+    
+    Args:
+        predictions_proba: Prediction probabilities [N, zones, classes]
+        targets: Ground truth labels [N, zones]
+        zone_names: Names of anatomical zones
+        class_names: Names of CSI classes
+        save_dir: Directory to save plots
+        split_name: Name of the data split
+        ignore_class: Class to ignore in evaluation (default: 4 for ungradable)
+        
+    Returns:
+        Dictionary with PR metrics per zone and class
+    """
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import precision_recall_curve, average_precision_score
+    from sklearn.preprocessing import label_binarize
+    import matplotlib.colors as mcolors
+    from pathlib import Path
+    
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    pr_metrics = {}
+    
+    # Color palette for classes
+    colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#7209B7']
+    
+    for zone_idx, zone_name in enumerate(zone_names):
+        zone_targets = targets[:, zone_idx]
+        zone_proba = predictions_proba[:, zone_idx, :]
+        
+        # Filter out ignore_class samples
+        valid_mask = zone_targets != ignore_class
+        if not valid_mask.any():
+            logger.warning(f"No valid samples for zone {zone_name}")
+            continue
+            
+        zone_targets_valid = zone_targets[valid_mask]
+        zone_proba_valid = zone_proba[valid_mask]
+        
+        # Create binary labels for each class (One-vs-Rest)
+        n_classes = len(class_names) - 1  # Exclude ungradable class
+        zone_targets_binary = label_binarize(zone_targets_valid, classes=list(range(n_classes)))
+        
+        # Handle case where only one class is present
+        if zone_targets_binary.shape[1] == 1:
+            # Add a dummy column for the missing classes
+            missing_classes = n_classes - zone_targets_binary.shape[1]
+            dummy_cols = np.zeros((zone_targets_binary.shape[0], missing_classes))
+            zone_targets_binary = np.hstack([zone_targets_binary, dummy_cols])
+        
+        # Create PR curves
+        plt.figure(figsize=(10, 8))
+        
+        pr_auc = {}
+        for class_idx in range(n_classes):
+            if class_idx >= zone_proba_valid.shape[1]:
+                continue
+                
+            # Get probabilities for this class
+            class_proba = zone_proba_valid[:, class_idx]
+            
+            # Get binary targets for this class
+            if zone_targets_binary.shape[1] > class_idx:
+                class_targets = zone_targets_binary[:, class_idx]
+            else:
+                # This class wasn't present in the data
+                continue
+            
+            # Skip if no positive samples for this class
+            if class_targets.sum() == 0:
+                continue
+            
+            # Compute PR curve
+            precision, recall, _ = precision_recall_curve(class_targets, class_proba)
+            pr_auc[class_idx] = average_precision_score(class_targets, class_proba)
+            
+            # Plot PR curve
+            plt.plot(
+                recall, precision,
+                color=colors[class_idx % len(colors)],
+                lw=2,
+                label=f'{class_names[class_idx]} (AP = {pr_auc[class_idx]:.3f})'
+            )
+        
+        # Plot baseline (random classifier)
+        baseline = (zone_targets_valid >= 0).mean()  # Proportion of positive samples
+        plt.axhline(y=baseline, color='k', linestyle='--', alpha=0.5, label=f'Baseline = {baseline:.3f}')
+        
+        # Formatting
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('Recall', fontsize=12)
+        plt.ylabel('Precision', fontsize=12)
+        plt.title(f'Precision-Recall Curves - {zone_name.replace("_", " ").title()}\n({split_name.title()} Set)', fontsize=14)
+        plt.legend(loc="lower left")
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        # Save plot
+        filename = f"{split_name}_{zone_name}_pr_curves.png"
+        plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        pr_metrics[zone_name] = pr_auc
+        logger.info(f"Saved PR curves for {zone_name}: {save_path / filename}")
+    
+    # Create overall PR curves (macro-averaged across zones)
+    plt.figure(figsize=(12, 8))
+    
+    for class_idx in range(n_classes):
+        class_precision_list = []
+        class_recall_list = []
+        class_ap_list = []
+        
+        for zone_idx, zone_name in enumerate(zone_names):
+            zone_targets = targets[:, zone_idx]
+            zone_proba = predictions_proba[:, zone_idx, :]
+            
+            # Filter out ignore_class samples
+            valid_mask = zone_targets != ignore_class
+            if not valid_mask.any():
+                continue
+                
+            zone_targets_valid = zone_targets[valid_mask]
+            zone_proba_valid = zone_proba[valid_mask]
+            
+            # Create binary labels for this class
+            class_targets = (zone_targets_valid == class_idx).astype(int)
+            
+            # Skip if no positive samples
+            if class_targets.sum() == 0:
+                continue
+                
+            if class_idx < zone_proba_valid.shape[1]:
+                class_proba = zone_proba_valid[:, class_idx]
+                precision, recall, _ = precision_recall_curve(class_targets, class_proba)
+                class_precision_list.append(precision)
+                class_recall_list.append(recall)
+                class_ap_list.append(average_precision_score(class_targets, class_proba))
+        
+        if class_ap_list:
+            # Compute macro-averaged PR for this class
+            mean_ap = np.mean(class_ap_list)
+            
+            # Interpolate all PR curves to common recall points
+            mean_recall = np.linspace(0, 1, 100)
+            interp_precision_list = []
+            
+            for precision, recall in zip(class_precision_list, class_recall_list):
+                # Reverse arrays for interpolation (recall should be decreasing)
+                precision_rev = precision[::-1]
+                recall_rev = recall[::-1]
+                interp_precision = np.interp(mean_recall, recall_rev, precision_rev)
+                interp_precision_list.append(interp_precision)
+            
+            if interp_precision_list:
+                mean_precision = np.mean(interp_precision_list, axis=0)
+                
+                plt.plot(
+                    mean_recall, mean_precision,
+                    color=colors[class_idx % len(colors)],
+                    lw=3,
+                    label=f'{class_names[class_idx]} (Macro AP = {mean_ap:.3f})'
+                )
+    
+    # Formatting
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Recall', fontsize=12)
+    plt.ylabel('Precision', fontsize=12)
+    plt.title(f'Macro-Averaged Precision-Recall Curves Across All Zones\n({split_name.title()} Set)', fontsize=14)
+    plt.legend(loc="lower left")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # Save overall plot
+    filename = f"{split_name}_overall_pr_curves.png"
+    plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved overall PR curves: {save_path / filename}")
+    return pr_metrics
+
+
+def plot_training_curves(
+    train_losses: List[float],
+    val_losses: List[float],
+    train_accuracies: List[float],
+    val_accuracies: List[float],
+    train_f1_scores: List[float],
+    val_f1_scores: List[float],
+    save_dir: str,
+    run_name: str
+) -> None:
+    """
+    Plot training curves for loss, accuracy, and F1 score.
+    
+    Args:
+        train_losses: Training losses per epoch
+        val_losses: Validation losses per epoch
+        train_accuracies: Training accuracies per epoch
+        val_accuracies: Validation accuracies per epoch
+        train_f1_scores: Training F1 scores per epoch
+        val_f1_scores: Validation F1 scores per epoch
+        save_dir: Directory to save plots
+        run_name: Name of the training run
+    """
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+    
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    epochs = range(1, len(train_losses) + 1)
+    
+    # Create subplots
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    
+    # Loss plot
+    axes[0].plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
+    axes[0].plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
+    axes[0].set_title('Model Loss', fontsize=14, fontweight='bold')
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Loss')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+    
+    # Accuracy plot
+    axes[1].plot(epochs, train_accuracies, 'b-', label='Training Accuracy', linewidth=2)
+    axes[1].plot(epochs, val_accuracies, 'r-', label='Validation Accuracy', linewidth=2)
+    axes[1].set_title('Model Accuracy', fontsize=14, fontweight='bold')
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('Accuracy')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+    
+    # F1 Score plot
+    axes[2].plot(epochs, train_f1_scores, 'b-', label='Training F1 Score', linewidth=2)
+    axes[2].plot(epochs, val_f1_scores, 'r-', label='Validation F1 Score', linewidth=2)
+    axes[2].set_title('Model F1 Score', fontsize=14, fontweight='bold')
+    axes[2].set_xlabel('Epoch')
+    axes[2].set_ylabel('F1 Score')
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
+    
+    # Overall formatting
+    plt.suptitle(f'Training Curves - {run_name}', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    
+    # Save plot
+    filename = f"{run_name}_training_curves.png"
+    plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved training curves: {save_path / filename}")
+
+
+def create_confusion_matrix_grid(
+    confusion_matrices: Dict[str, np.ndarray],
+    save_dir: str,
+    split_name: str = "validation",
+    run_name: str = "model"
+) -> None:
+    """
+    Create a grid of confusion matrices matching anatomical zone positions.
+    
+    Grid layout matches chest X-ray anatomy:
+    [Right Superior] [Left Superior]
+    [Right Middle]   [Left Middle] 
+    [Right Inferior] [Left Inferior]
+    
+    Args:
+        confusion_matrices: Dictionary of confusion matrices per zone
+        save_dir: Directory to save the grid plot
+        split_name: Name of the data split
+        run_name: Name of the model/run
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from pathlib import Path
+    
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    # Zone mapping to grid positions (matches anatomical layout)
+    zone_positions = {
+        "right_sup": (0, 0),    # Top-left (patient's right superior)
+        "left_sup": (0, 1),     # Top-right (patient's left superior)
+        "right_mid": (1, 0),    # Middle-left (patient's right middle)
+        "left_mid": (1, 1),     # Middle-right (patient's left middle)
+        "right_inf": (2, 0),    # Bottom-left (patient's right inferior)
+        "left_inf": (2, 1)      # Bottom-right (patient's left inferior)
+    }
+    
+    # Zone display names
+    zone_display_names = {
+        "right_sup": "Right Superior",
+        "left_sup": "Left Superior",
+        "right_mid": "Right Middle", 
+        "left_mid": "Left Middle",
+        "right_inf": "Right Inferior",
+        "left_inf": "Left Inferior"
+    }
+    
+    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
+    
+    # Create 3x2 subplot grid
+    fig, axes = plt.subplots(3, 2, figsize=(12, 16))
+    fig.suptitle(f'CSI Confusion Matrices - Anatomical Grid Layout\n({split_name.title()} Set)', 
+                 fontsize=16, fontweight='bold', y=0.98)
+    
+    for zone_name, (row, col) in zone_positions.items():
+        ax = axes[row, col]
+        
+        if zone_name in confusion_matrices and confusion_matrices[zone_name].sum() > 0:
+            cm = confusion_matrices[zone_name].astype(int)
+            
+            # Create heatmap
+            sns.heatmap(
+                cm, 
+                annot=True, 
+                fmt='d', 
+                cmap='Blues',
+                xticklabels=class_names,
+                yticklabels=class_names,
+                cbar=False,  # Disable individual colorbars
+                ax=ax,
+                square=True
+            )
+            
+            # Calculate accuracy for this zone
+            accuracy = np.trace(cm) / np.sum(cm) if np.sum(cm) > 0 else 0
+            total_samples = np.sum(cm)
+            
+            ax.set_title(f'{zone_display_names[zone_name]}\n'
+                        f'Accuracy: {accuracy:.3f} (n={total_samples})', 
+                        fontweight='bold', fontsize=12)
+        else:
+            # No data for this zone
+            ax.text(0.5, 0.5, f'{zone_display_names[zone_name]}\nNo Data', 
+                   ha='center', va='center', transform=ax.transAxes,
+                   fontsize=12, style='italic', color='gray')
+            ax.set_xticks([])
+            ax.set_yticks([])
+        
+        # Set labels only for bottom and left edges
+        if row == 2:  # Bottom row
+            ax.set_xlabel('Predicted CSI Score', fontweight='bold')
+        else:
+            ax.set_xlabel('')
+            
+        if col == 0:  # Left column
+            ax.set_ylabel('True CSI Score', fontweight='bold')
+        else:
+            ax.set_ylabel('')
+    
+    # Add a single colorbar for the entire figure
+    if any(cm.sum() > 0 for cm in confusion_matrices.values()):
+        # Find a confusion matrix with data for colorbar reference
+        reference_cm = None
+        for cm in confusion_matrices.values():
+            if cm.sum() > 0:
+                reference_cm = cm
+                break
+        
+        if reference_cm is not None:
+            # Create temporary heatmap for colorbar
+            temp_ax = fig.add_subplot(111, frameon=False)
+            temp_ax.tick_params(labelcolor="none", bottom=False, left=False)
+            im = temp_ax.imshow(reference_cm, cmap='Blues', alpha=0)
+            cbar = fig.colorbar(im, ax=axes, location='right', shrink=0.8, pad=0.02)
+            cbar.set_label('Sample Count', fontweight='bold', rotation=270, labelpad=20)
+            temp_ax.remove()
+    
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.94, right=0.92)
+    
+    # Save plot
+    filename = f"{split_name}_confusion_matrices_grid.png"
+    plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved confusion matrix grid: {save_path / filename}")
+
+
+def create_roc_curves_grid(
+    predictions_proba: np.ndarray,
+    targets: np.ndarray,
+    zone_names: List[str],
+    class_names: List[str],
+    save_dir: str,
+    split_name: str = "validation",
+    ignore_class: int = 4
+) -> None:
+    """
+    Create a grid of ROC curves matching anatomical zone positions.
+    
+    Args:
+        predictions_proba: Prediction probabilities [N, zones, classes]
+        targets: Ground truth labels [N, zones]
+        zone_names: Names of anatomical zones
+        class_names: Names of CSI classes
+        save_dir: Directory to save plots
+        split_name: Name of the data split
+        ignore_class: Class to ignore in evaluation
+    """
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import roc_curve, auc
+    from pathlib import Path
+    
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    # Zone mapping to grid positions
+    zone_positions = {
+        "right_sup": (0, 0), "left_sup": (0, 1),
+        "right_mid": (1, 0), "left_mid": (1, 1),
+        "right_inf": (2, 0), "left_inf": (2, 1)
+    }
+    
+    zone_display_names = {
+        "right_sup": "Right Superior", "left_sup": "Left Superior",
+        "right_mid": "Right Middle", "left_mid": "Left Middle",
+        "right_inf": "Right Inferior", "left_inf": "Left Inferior"
+    }
+    
+    colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D']
+    
+    # Create 3x2 subplot grid
+    fig, axes = plt.subplots(3, 2, figsize=(14, 18))
+    fig.suptitle(f'ROC Curves - Anatomical Grid Layout\n({split_name.title()} Set)', 
+                 fontsize=16, fontweight='bold', y=0.98)
+    
+    for zone_idx, zone_name in enumerate(zone_names):
+        if zone_name not in zone_positions:
+            continue
+            
+        row, col = zone_positions[zone_name]
+        ax = axes[row, col]
+        
+        zone_targets = targets[:, zone_idx]
+        zone_proba = predictions_proba[:, zone_idx, :]
+        
+        # Filter out ignore_class samples
+        valid_mask = zone_targets != ignore_class
+        if not valid_mask.any():
+            ax.text(0.5, 0.5, f'{zone_display_names[zone_name]}\nNo Valid Data', 
+                   ha='center', va='center', transform=ax.transAxes,
+                   fontsize=12, style='italic', color='gray')
+            ax.set_xlim([0, 1])
+            ax.set_ylim([0, 1])
+            continue
+            
+        zone_targets_valid = zone_targets[valid_mask]
+        zone_proba_valid = zone_proba[valid_mask]
+        
+        n_classes = len(class_names) - 1  # Exclude ungradable class
+        
+        # Plot ROC curves for each class
+        auc_scores = []
+        for class_idx in range(n_classes):
+            if class_idx >= zone_proba_valid.shape[1]:
+                continue
+                
+            # Create binary targets for this class
+            class_targets = (zone_targets_valid == class_idx).astype(int)
+            
+            if class_targets.sum() == 0:
+                continue
+                
+            class_proba = zone_proba_valid[:, class_idx]
+            fpr, tpr, _ = roc_curve(class_targets, class_proba)
+            roc_auc = auc(fpr, tpr)
+            auc_scores.append(roc_auc)
+            
+            ax.plot(fpr, tpr, color=colors[class_idx % len(colors)], lw=2,
+                   label=f'{class_names[class_idx]} (AUC = {roc_auc:.3f})')
+        
+        # Plot diagonal line
+        ax.plot([0, 1], [0, 1], 'k--', lw=1, alpha=0.5)
+        
+        # Formatting
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        
+        mean_auc = np.mean(auc_scores) if auc_scores else 0
+        ax.set_title(f'{zone_display_names[zone_name]}\nMean AUC: {mean_auc:.3f}', 
+                    fontweight='bold', fontsize=11)
+        
+        if row == 2:  # Bottom row
+            ax.set_xlabel('False Positive Rate', fontweight='bold')
+        if col == 0:  # Left column
+            ax.set_ylabel('True Positive Rate', fontweight='bold')
+            
+        ax.legend(loc="lower right", fontsize=9)
+        ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.94)
+    
+    # Save plot
+    filename = f"{split_name}_roc_curves_grid.png"
+    plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved ROC curves grid: {save_path / filename}")
+
+
+def create_precision_recall_curves_grid(
+    predictions_proba: np.ndarray,
+    targets: np.ndarray,
+    zone_names: List[str],
+    class_names: List[str],
+    save_dir: str,
+    split_name: str = "validation",
+    ignore_class: int = 4
+) -> None:
+    """
+    Create a grid of Precision-Recall curves matching anatomical zone positions.
+    
+    Args:
+        predictions_proba: Prediction probabilities [N, zones, classes]
+        targets: Ground truth labels [N, zones]
+        zone_names: Names of anatomical zones
+        class_names: Names of CSI classes
+        save_dir: Directory to save plots
+        split_name: Name of the data split
+        ignore_class: Class to ignore in evaluation
+    """
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import precision_recall_curve, average_precision_score
+    from pathlib import Path
+    
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    # Zone mapping to grid positions
+    zone_positions = {
+        "right_sup": (0, 0), "left_sup": (0, 1),
+        "right_mid": (1, 0), "left_mid": (1, 1),
+        "right_inf": (2, 0), "left_inf": (2, 1)
+    }
+    
+    zone_display_names = {
+        "right_sup": "Right Superior", "left_sup": "Left Superior",
+        "right_mid": "Right Middle", "left_mid": "Left Middle",
+        "right_inf": "Right Inferior", "left_inf": "Left Inferior"
+    }
+    
+    colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D']
+    
+    # Create 3x2 subplot grid
+    fig, axes = plt.subplots(3, 2, figsize=(14, 18))
+    fig.suptitle(f'Precision-Recall Curves - Anatomical Grid Layout\n({split_name.title()} Set)', 
+                 fontsize=16, fontweight='bold', y=0.98)
+    
+    for zone_idx, zone_name in enumerate(zone_names):
+        if zone_name not in zone_positions:
+            continue
+            
+        row, col = zone_positions[zone_name]
+        ax = axes[row, col]
+        
+        zone_targets = targets[:, zone_idx]
+        zone_proba = predictions_proba[:, zone_idx, :]
+        
+        # Filter out ignore_class samples
+        valid_mask = zone_targets != ignore_class
+        if not valid_mask.any():
+            ax.text(0.5, 0.5, f'{zone_display_names[zone_name]}\nNo Valid Data', 
+                   ha='center', va='center', transform=ax.transAxes,
+                   fontsize=12, style='italic', color='gray')
+            ax.set_xlim([0, 1])
+            ax.set_ylim([0, 1])
+            continue
+            
+        zone_targets_valid = zone_targets[valid_mask]
+        zone_proba_valid = zone_proba[valid_mask]
+        
+        n_classes = len(class_names) - 1  # Exclude ungradable class
+        
+        # Plot PR curves for each class
+        ap_scores = []
+        for class_idx in range(n_classes):
+            if class_idx >= zone_proba_valid.shape[1]:
+                continue
+                
+            # Create binary targets for this class
+            class_targets = (zone_targets_valid == class_idx).astype(int)
+            
+            if class_targets.sum() == 0:
+                continue
+                
+            class_proba = zone_proba_valid[:, class_idx]
+            precision, recall, _ = precision_recall_curve(class_targets, class_proba)
+            ap_score = average_precision_score(class_targets, class_proba)
+            ap_scores.append(ap_score)
+            
+            ax.plot(recall, precision, color=colors[class_idx % len(colors)], lw=2,
+                   label=f'{class_names[class_idx]} (AP = {ap_score:.3f})')
+        
+        # Formatting
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        
+        mean_ap = np.mean(ap_scores) if ap_scores else 0
+        ax.set_title(f'{zone_display_names[zone_name]}\nMean AP: {mean_ap:.3f}', 
+                    fontweight='bold', fontsize=11)
+        
+        if row == 2:  # Bottom row
+            ax.set_xlabel('Recall', fontweight='bold')
+        if col == 0:  # Left column
+            ax.set_ylabel('Precision', fontweight='bold')
+            
+        ax.legend(loc="lower left", fontsize=9)
+        ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.94)
+    
+    # Save plot
+    filename = f"{split_name}_pr_curves_grid.png"
+    plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved PR curves grid: {save_path / filename}")
+
+
 # Export main utilities
 __all__ = [
     'EarlyStopping', 'MetricsTracker', 'AverageMeter',
@@ -830,5 +1671,7 @@ __all__ = [
     'format_time', 'print_model_summary', 'create_dirs',
     'show_batch', 'visualize_data_distribution', 'analyze_missing_data',
     'create_debug_dataset', 'make_run_name', 'make_model_name', 'pretty_print_config',
-    'print_config', 'log_config', 'setup_logging', 'logger'
+    'print_config', 'log_config', 'setup_logging', 'logger',
+    'create_roc_curves', 'create_precision_recall_curves', 'plot_training_curves',
+    'create_confusion_matrix_grid', 'create_roc_curves_grid', 'create_precision_recall_curves_grid'
 ] 

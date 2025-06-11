@@ -20,7 +20,7 @@ import wandb
 from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
 from .models import build_model
-from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, make_model_name, log_config
+from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, make_model_name, log_config, plot_training_curves
 from .metrics import compute_pytorch_f1_metrics, compute_precision_recall_metrics, compute_enhanced_f1_metrics
 
 
@@ -193,16 +193,22 @@ def train_epoch(
         # Update progress bar
         progress_bar.set_postfix({"loss": f"{loss.item():.4f}"})
     
-    # Compute F1 metrics
+    # Compute F1 metrics and accuracy
     all_pred_tensor = torch.cat(all_predictions, dim=0)
     all_target_tensor = torch.cat(all_targets, dim=0)
     f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
     pr_metrics = compute_precision_recall(all_pred_tensor, all_target_tensor)
     
+    # Compute accuracy
+    pred_classes = torch.argmax(all_pred_tensor, dim=-1)
+    valid_mask = all_target_tensor != 4  # Exclude ungradable samples
+    accuracy = (pred_classes[valid_mask] == all_target_tensor[valid_mask]).float().mean().item()
+    
     # Combine metrics
     train_metrics = metrics.get_averages()
     train_metrics.update(f1_metrics)
     train_metrics.update(pr_metrics)
+    train_metrics['accuracy'] = accuracy
     
     return train_metrics
 
@@ -246,16 +252,22 @@ def validate_epoch(
             all_predictions.append(outputs)
             all_targets.append(targets)
     
-    # Compute F1 metrics
+    # Compute F1 metrics and accuracy
     all_pred_tensor = torch.cat(all_predictions, dim=0)
     all_target_tensor = torch.cat(all_targets, dim=0)
     f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
     pr_metrics = compute_precision_recall(all_pred_tensor, all_target_tensor)
     
+    # Compute accuracy
+    pred_classes = torch.argmax(all_pred_tensor, dim=-1)
+    valid_mask = all_target_tensor != 4  # Exclude ungradable samples
+    accuracy = (pred_classes[valid_mask] == all_target_tensor[valid_mask]).float().mean().item()
+    
     # Combine metrics
     val_metrics = metrics.get_averages()
     val_metrics.update(f1_metrics)
     val_metrics.update(pr_metrics)
+    val_metrics['accuracy'] = accuracy
     
     return val_metrics
 
@@ -335,6 +347,14 @@ def train_model(config) -> None:
     best_val_loss = float('inf')
     best_val_f1 = 0.0
     
+    # Track metrics for plotting curves
+    train_losses = []
+    val_losses = []
+    train_f1_scores = []
+    val_f1_scores = []
+    train_accuracies = []
+    val_accuracies = []
+    
     for epoch in range(1, config.n_epochs + 1):
         logger.info(f"Starting epoch {epoch}/{config.n_epochs}")
         
@@ -348,10 +368,18 @@ def train_model(config) -> None:
         scheduler.step(val_metrics["loss"])
         current_lr = optimizer.param_groups[0]["lr"]
         
+        # Store metrics for plotting
+        train_losses.append(train_metrics['loss'])
+        val_losses.append(val_metrics['loss'])
+        train_f1_scores.append(train_metrics['f1_macro'])
+        val_f1_scores.append(val_metrics['f1_macro'])
+        train_accuracies.append(train_metrics['accuracy'])
+        val_accuracies.append(val_metrics['accuracy'])
+        
         # Log metrics
         logger.info(f"Epoch {epoch}:")
-        logger.info(f"  Train - Loss: {train_metrics['loss']:.4f}, F1 Macro: {train_metrics['f1_macro']:.4f}, F1 Weighted: {train_metrics.get('f1_weighted_macro', 0):.4f}")
-        logger.info(f"  Val   - Loss: {val_metrics['loss']:.4f}, F1 Macro: {val_metrics['f1_macro']:.4f}, F1 Weighted: {val_metrics.get('f1_weighted_macro', 0):.4f}")
+        logger.info(f"  Train - Loss: {train_metrics['loss']:.4f}, F1 Macro: {train_metrics['f1_macro']:.4f}, Accuracy: {train_metrics['accuracy']:.4f}")
+        logger.info(f"  Val   - Loss: {val_metrics['loss']:.4f}, F1 Macro: {val_metrics['f1_macro']:.4f}, Accuracy: {val_metrics['accuracy']:.4f}")
         logger.info(f"  Learning Rate: {current_lr:.6f}")
         
         # Log to wandb
@@ -362,6 +390,9 @@ def train_model(config) -> None:
                 # Loss metrics
                 "train_loss": train_metrics["loss"],
                 "val_loss": val_metrics["loss"],
+                # Accuracy metrics
+                "train_accuracy": train_metrics["accuracy"],
+                "val_accuracy": val_metrics["accuracy"],
                 # F1 metrics - Enhanced with weighted versions
                 "train_f1_macro": train_metrics["f1_macro"],
                 "val_f1_macro": val_metrics["f1_macro"],
@@ -434,6 +465,17 @@ def train_model(config) -> None:
     logger.info("Training completed!")
     logger.info(f"Best validation loss: {best_val_loss:.4f}")
     logger.info(f"Best validation F1: {best_val_f1:.4f}")
+    
+    # Generate training curves
+    if len(train_losses) > 0:
+        logger.info("Generating training curves...")
+        graphs_dir = Path(config.graph_dir) / "training_curves"
+        plot_training_curves(
+            train_losses, val_losses,
+            train_accuracies, val_accuracies,
+            train_f1_scores, val_f1_scores,
+            str(graphs_dir), run_name if use_wandb else "training_run"
+        )
     
     if use_wandb:
         # Log final summary

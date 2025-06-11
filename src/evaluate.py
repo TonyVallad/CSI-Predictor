@@ -17,7 +17,11 @@ from .data import create_data_loaders
 from .models import CSIModel, build_model
 from .config import cfg, get_config
 from .metrics import compute_pytorch_f1_metrics, compute_accuracy, compute_confusion_matrix
-from .utils import logger, make_run_name, make_model_name, seed_everything, log_config
+from .utils import (
+    logger, make_run_name, make_model_name, seed_everything, log_config, 
+    create_roc_curves, create_precision_recall_curves,
+    create_confusion_matrix_grid, create_roc_curves_grid, create_precision_recall_curves_grid
+)
 
 
 def load_trained_model(model_path: str, device: torch.device) -> CSIModel:
@@ -351,7 +355,7 @@ def evaluate_model_on_loader(
     data_loader: DataLoader,
     device: torch.device,
     criterion: Optional[nn.Module] = None
-) -> Tuple[np.ndarray, np.ndarray, float]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """
     Evaluate model on a data loader.
     
@@ -362,11 +366,12 @@ def evaluate_model_on_loader(
         criterion: Loss function (optional)
         
     Returns:
-        Tuple of (predictions, targets, loss)
+        Tuple of (predictions, targets, probabilities, loss)
     """
     model.eval()
     all_predictions = []
     all_targets = []
+    all_probabilities = []
     total_loss = 0.0
     
     with torch.no_grad():
@@ -381,19 +386,22 @@ def evaluate_model_on_loader(
                 loss = criterion(outputs, targets)
                 total_loss += loss.item()
             
-            # Convert logits to class predictions
+            # Convert logits to probabilities and class predictions
+            probabilities = torch.softmax(outputs, dim=-1)  # [batch_size, n_zones, n_classes]
             pred_classes = torch.argmax(outputs, dim=-1)  # [batch_size, n_zones]
             
-            # Store predictions and targets
+            # Store predictions, targets, and probabilities
             all_predictions.append(pred_classes.cpu().numpy())
             all_targets.append(targets.cpu().numpy())
+            all_probabilities.append(probabilities.cpu().numpy())
     
-    # Concatenate all predictions and targets
+    # Concatenate all predictions, targets, and probabilities
     predictions = np.concatenate(all_predictions, axis=0)
     targets = np.concatenate(all_targets, axis=0)
+    probabilities = np.concatenate(all_probabilities, axis=0)
     avg_loss = total_loss / len(data_loader) if criterion is not None else 0.0
     
-    return predictions, targets, avg_loss
+    return predictions, targets, probabilities, avg_loss
 
 
 def compute_zone_metrics(predictions: np.ndarray, targets: np.ndarray, zone_names: List[str]) -> Dict[str, Dict[str, float]]:
@@ -735,7 +743,7 @@ def evaluate_model(config) -> None:
     
     # Evaluate on validation set
     logger.info("Evaluating on validation set...")
-    val_predictions, val_targets, val_loss = evaluate_model_on_loader(model, val_loader, device, criterion)
+    val_predictions, val_targets, val_probabilities, val_loss = evaluate_model_on_loader(model, val_loader, device, criterion)
     
     # Debug: Check for unknown samples in validation set
     val_unknown_count = (val_targets == 4).sum()
@@ -754,7 +762,7 @@ def evaluate_model(config) -> None:
     
     # Evaluate on test set
     logger.info("Evaluating on test set...")
-    test_predictions, test_targets, test_loss = evaluate_model_on_loader(model, test_loader, device, criterion)
+    test_predictions, test_targets, test_probabilities, test_loss = evaluate_model_on_loader(model, test_loader, device, criterion)
     
     # Debug: Check for unknown samples in test set
     test_unknown_count = (test_targets == 4).sum()
@@ -795,6 +803,70 @@ def evaluate_model(config) -> None:
     # Save confusion matrix graphs
     save_confusion_matrix_graphs(val_confusion_matrices, config, make_model_name(config, task_tag="Eval"), "validation")
     save_confusion_matrix_graphs(test_confusion_matrices, config, make_model_name(config, task_tag="Eval"), "test")
+    
+    # Create and save ROC curves
+    logger.info("Creating ROC curves...")
+    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
+    graphs_dir = Path(config.graph_dir) / make_model_name(config, task_tag="Eval")
+    
+    val_roc_metrics = create_roc_curves(
+        val_probabilities, val_targets, zone_names, class_names,
+        str(graphs_dir), "validation", ignore_class=4
+    )
+    
+    test_roc_metrics = create_roc_curves(
+        test_probabilities, test_targets, zone_names, class_names,
+        str(graphs_dir), "test", ignore_class=4
+    )
+    
+    # Create and save Precision-Recall curves
+    logger.info("Creating Precision-Recall curves...")
+    
+    val_pr_metrics = create_precision_recall_curves(
+        val_probabilities, val_targets, zone_names, class_names,
+        str(graphs_dir), "validation", ignore_class=4
+    )
+    
+    test_pr_metrics = create_precision_recall_curves(
+        test_probabilities, test_targets, zone_names, class_names,
+        str(graphs_dir), "test", ignore_class=4
+    )
+    
+    # Create and save grid layouts
+    logger.info("Creating grid visualizations...")
+    
+    # Confusion matrix grids
+    create_confusion_matrix_grid(
+        val_confusion_matrices, str(graphs_dir), "validation",
+        make_model_name(config, task_tag="Eval")
+    )
+    
+    create_confusion_matrix_grid(
+        test_confusion_matrices, str(graphs_dir), "test",
+        make_model_name(config, task_tag="Eval")
+    )
+    
+    # ROC curves grids
+    create_roc_curves_grid(
+        val_probabilities, val_targets, zone_names, class_names,
+        str(graphs_dir), "validation", ignore_class=4
+    )
+    
+    create_roc_curves_grid(
+        test_probabilities, test_targets, zone_names, class_names,
+        str(graphs_dir), "test", ignore_class=4
+    )
+    
+    # Precision-Recall curves grids
+    create_precision_recall_curves_grid(
+        val_probabilities, val_targets, zone_names, class_names,
+        str(graphs_dir), "validation", ignore_class=4
+    )
+    
+    create_precision_recall_curves_grid(
+        test_probabilities, test_targets, zone_names, class_names,
+        str(graphs_dir), "test", ignore_class=4
+    )
     
     # Log to WandB
     logger.info("Logging results to Weights & Biases...")
