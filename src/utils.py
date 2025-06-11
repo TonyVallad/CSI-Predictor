@@ -1401,6 +1401,10 @@ def create_confusion_matrix_grid(
         else:
             ax.set_ylabel('')
     
+    # Adjust layout first to make room for colorbar
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.94, right=0.75)
+    
     # Add a single colorbar for the entire figure
     if any(cm.sum() > 0 for cm in confusion_matrices.values()):
         # Find the maximum value across all confusion matrices for consistent colorbar
@@ -1414,12 +1418,10 @@ def create_confusion_matrix_grid(
         sm = mpl_cm.ScalarMappable(norm=norm, cmap='Blues')
         sm.set_array([])
         
-        # Add colorbar to the figure with proper spacing
-        cbar = fig.colorbar(sm, ax=axes.ravel().tolist(), location='right', shrink=0.8, pad=0.1)
+        # Create colorbar with explicit positioning
+        cbar_ax = fig.add_axes([0.78, 0.15, 0.03, 0.7])  # [left, bottom, width, height]
+        cbar = fig.colorbar(sm, cax=cbar_ax)
         cbar.set_label('Sample Count', fontweight='bold', rotation=270, labelpad=20)
-    
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.94, right=0.82)
     
     # Save plot
     filename = f"{split_name}_confusion_matrices_grid.png"
