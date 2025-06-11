@@ -77,20 +77,20 @@ metric:
 
 1. **Better Medical Performance**: Optimization now accounts for class imbalance typical in medical data
 2. **More Realistic Metrics**: Weighted F1 better reflects real-world CSI prediction performance
-3. **Improved Model Selection**: Hyperparameter optimization will favor models that perform well across all severity levels
+3. **Improved Model Selection**: Hyperparameter optimization will favor models that perform well across all congestion levels
 4. **Enhanced Monitoring**: Both macro and weighted F1 logged for comprehensive analysis
 
 ## 🔄 **What This Means for Your Next Sweep:**
 
 When you run your next WandB sweep, it will:
 - ✅ **Optimize for `val_f1_weighted`** instead of `val_f1_macro`
-- ✅ **Account for class imbalance** in CSI severity levels
+- ✅ **Account for class imbalance** in CSI congestion levels
 - ✅ **Select models** that perform well on both common and rare cases
 - ✅ **Provide better hyperparameters** for real-world medical deployment
 
 ## 🚀 **Ready to Run:**
 
-Your WandB sweep is now configured to use weighted F1 score optimization, which is **more appropriate for imbalanced medical data** like CSI scores. The next sweep will find hyperparameters that perform better on the actual distribution of chest X-ray severity levels.
+Your WandB sweep is now configured to use weighted F1 score optimization, which is **more appropriate for imbalanced medical data** like CSI scores. The next sweep will find hyperparameters that perform better on the actual distribution of chest X-ray congestion levels.
 
 ## 📊 **Monitoring:**
 

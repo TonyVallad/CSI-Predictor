@@ -20,7 +20,7 @@ import wandb
 from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
 from .models import build_model
-from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, log_config
+from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, make_model_name, log_config
 from .metrics import compute_pytorch_f1_metrics, compute_precision_recall_metrics, compute_enhanced_f1_metrics
 
 
@@ -400,9 +400,8 @@ def train_model(config) -> None:
             best_val_loss = val_metrics["loss"]
             best_val_f1 = val_metrics["f1_macro"]
             
-            # Create model name with timestamp
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            model_name = f"{config.model_arch} - {timestamp}"
+            # Create model name with new structured format
+            model_name = make_model_name(config, task_tag="Tr")
             
             save_path = Path(config.get_model_path(model_name))
             save_path.parent.mkdir(parents=True, exist_ok=True)

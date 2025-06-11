@@ -670,6 +670,39 @@ def create_debug_dataset(
     print(f"  Samples: {num_samples}")
 
 
+def make_model_name(cfg, task_tag: str = "Tr", extra_info: str = "") -> str:
+    """
+    Create a structured model name with the format:
+    [YYYYMMDD_HHMMSS]_[ModelName]_[TaskTag]_[ExtraInfo]
+    
+    Args:
+        cfg: Configuration object
+        task_tag: Task identifier (Tr=Training, Va=Validation, Te=Test, Eval=Evaluation, Infer=Inference)
+        extra_info: Optional extra information (dataset slice, augmentation tag, resolution, hyperparam ID)
+        
+    Returns:
+        Formatted model name
+        
+    Examples:
+        20250611_093054_ResNet50_Tr
+        20250611_093054_RadDINO_Eval_batch64
+        20250611_093054_ViT-B_Infer_518x518
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Clean up model architecture name for consistency
+    model_arch = cfg.model_arch.replace("_", "-").replace(" ", "-")
+    
+    # Build the name components
+    name_parts = [timestamp, model_arch, task_tag]
+    
+    # Add extra info if provided
+    if extra_info:
+        name_parts.append(extra_info)
+    
+    return "_".join(name_parts)
+
+
 def make_run_name(cfg) -> str:
     """
     Create a timestamped run name for experiments.
@@ -681,11 +714,9 @@ def make_run_name(cfg) -> str:
         Formatted run name with timestamp
         
     Example:
-        resnet50_2025-05-30_13-48-07
+        20250611_093054_ResNet50_Tr
     """
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    model_arch = cfg.model_arch.replace("-", "_").replace(" ", "_")
-    return f"{model_arch}_{timestamp}"
+    return make_model_name(cfg, task_tag="Tr")
 
 
 def seed_everything(seed: int = 42) -> None:
@@ -798,6 +829,6 @@ __all__ = [
     'save_checkpoint', 'load_checkpoint', 'calculate_class_weights',
     'format_time', 'print_model_summary', 'create_dirs',
     'show_batch', 'visualize_data_distribution', 'analyze_missing_data',
-    'create_debug_dataset', 'make_run_name', 'pretty_print_config',
+    'create_debug_dataset', 'make_run_name', 'make_model_name', 'pretty_print_config',
     'print_config', 'log_config', 'setup_logging', 'logger'
 ] 

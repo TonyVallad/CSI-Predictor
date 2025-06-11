@@ -17,7 +17,7 @@ from .data import create_data_loaders
 from .models import CSIModel, build_model
 from .config import cfg, get_config
 from .metrics import compute_pytorch_f1_metrics, compute_accuracy, compute_confusion_matrix
-from .utils import logger, make_run_name, seed_everything, log_config
+from .utils import logger, make_run_name, make_model_name, seed_everything, log_config
 
 
 def load_trained_model(model_path: str, device: torch.device) -> CSIModel:
@@ -263,7 +263,7 @@ def log_to_wandb(
         import wandb
         
         # Initialize wandb run for evaluation
-        run_name = f"eval_{make_run_name(config)}"
+        run_name = make_model_name(config, task_tag="Eval")
         wandb.init(
             project="csi-predictor-eval",
             name=run_name,
@@ -793,8 +793,8 @@ def evaluate_model(config) -> None:
     save_predictions(test_predictions, test_targets, output_dir / "test_predictions.csv", zone_names)
     
     # Save confusion matrix graphs
-    save_confusion_matrix_graphs(val_confusion_matrices, config, make_run_name(config), "validation")
-    save_confusion_matrix_graphs(test_confusion_matrices, config, make_run_name(config), "test")
+    save_confusion_matrix_graphs(val_confusion_matrices, config, make_model_name(config, task_tag="Eval"), "validation")
+    save_confusion_matrix_graphs(test_confusion_matrices, config, make_model_name(config, task_tag="Eval"), "test")
     
     # Log to WandB
     logger.info("Logging results to Weights & Biases...")

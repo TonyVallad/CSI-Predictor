@@ -17,7 +17,7 @@ class RadDINOCSIModel(nn.Module):
     This model uses Microsoft's Rad-DINO as the backbone and adds:
     - Classification head for overall diagnosis (3 classes)
     - CSI head for 6-zone scoring (5 classes per zone: 0-4)
-    - Mean CSI head for overall severity (1 continuous value)
+            - Mean CSI head for overall congestion (1 continuous value)
     """
     
     def __init__(self, n_classes_per_zone: int = 5, pretrained: bool = True):
@@ -43,7 +43,7 @@ class RadDINOCSIModel(nn.Module):
         # Create heads for different outputs
         self.classification_head = nn.Linear(self.feature_dim, 3)  # Overall classification
         self.head_csi = nn.Linear(self.feature_dim, self.n_zones * self.n_classes_per_zone)  # 6 zones * 5 classes
-        self.mean_csi = nn.Linear(self.feature_dim, 1)  # Overall severity score
+        self.mean_csi = nn.Linear(self.feature_dim, 1)  # Overall congestion score
         
         # Activation functions
         self.relu = nn.ReLU(inplace=True)
@@ -64,7 +64,7 @@ class RadDINOCSIModel(nn.Module):
             Tuple of:
             - classification_output: [batch_size, 3] - Overall classification logits
             - csi_scores: [batch_size, n_zones, n_classes_per_zone] - CSI zone logits
-            - mean_csi: [batch_size, 1] - Overall severity score
+            - mean_csi: [batch_size, 1] - Overall congestion score
         """
         # For RadDINO, we need to pass the input as pixel_values
         inputs = {'pixel_values': x}
@@ -83,7 +83,7 @@ class RadDINOCSIModel(nn.Module):
         csi_flat = self.head_csi(features)  # [batch_size, n_zones * n_classes_per_zone]
         csi_scores = csi_flat.view(-1, self.n_zones, self.n_classes_per_zone)  # [batch_size, n_zones, n_classes_per_zone]
         
-        # Mean CSI (overall severity with ReLU for non-negative values)
+        # Mean CSI (overall congestion with ReLU for non-negative values)
         mean_csi = self.relu(self.mean_csi(features))
         
         return classification_output, csi_scores, mean_csi
