@@ -1414,12 +1414,12 @@ def create_confusion_matrix_grid(
         sm = mpl_cm.ScalarMappable(norm=norm, cmap='Blues')
         sm.set_array([])
         
-        # Add colorbar to the figure
-        cbar = fig.colorbar(sm, ax=axes.ravel().tolist(), location='right', shrink=0.8, pad=0.02)
+        # Add colorbar to the figure with proper spacing
+        cbar = fig.colorbar(sm, ax=axes.ravel().tolist(), location='right', shrink=0.8, pad=0.1)
         cbar.set_label('Sample Count', fontweight='bold', rotation=270, labelpad=20)
     
     plt.tight_layout()
-    plt.subplots_adjust(top=0.94, right=0.88)
+    plt.subplots_adjust(top=0.94, right=0.82)
     
     # Save plot
     filename = f"{split_name}_confusion_matrices_grid.png"
