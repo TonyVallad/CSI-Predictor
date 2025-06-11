@@ -192,8 +192,11 @@ def save_confusion_matrix_graphs(
     import seaborn as sns
     from pathlib import Path
     
-    # Create graphs directory structure using config
-    graphs_dir = Path(config.graph_dir) / run_name
+    # Extract model name from run name for consistent folder structure
+    model_name = run_name.rsplit('_', 1)[0] if '_' in run_name else run_name
+    
+    # Create graphs directory structure with new organization
+    graphs_dir = Path(config.graph_dir) / model_name / "confusion_matrices" / "individual_zones"
     graphs_dir.mkdir(parents=True, exist_ok=True)
     
     class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
@@ -208,10 +211,6 @@ def save_confusion_matrix_graphs(
         "right_inf": "Patient Right Inferior",
         "left_inf": "Patient Left Inferior"
     }
-    
-    # Create subfolder for zone-specific confusion matrices
-    zone_graphs_dir = graphs_dir / "zones" / "confusion_matrices"
-    zone_graphs_dir.mkdir(parents=True, exist_ok=True)
     
     for zone_name, cm in confusion_matrices.items():
         if cm.sum() > 0:  # Only create graphs for zones with data
@@ -237,9 +236,9 @@ def save_confusion_matrix_graphs(
             plt.ylabel('True CSI Score')
             plt.tight_layout()
             
-            # Save graph in zone subfolder
+            # Save graph in individual zones subfolder
             filename = f"{split_name}_{zone_name}_confusion_matrix.png"
-            save_path = zone_graphs_dir / filename
+            save_path = graphs_dir / filename
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             plt.close()
             
