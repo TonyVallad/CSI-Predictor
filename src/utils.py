@@ -1393,24 +1393,23 @@ def create_confusion_matrix_grid(
     
     # Add a single colorbar for the entire figure
     if any(cm.sum() > 0 for cm in confusion_matrices.values()):
-        # Find a confusion matrix with data for colorbar reference
-        reference_cm = None
-        for cm in confusion_matrices.values():
-            if cm.sum() > 0:
-                reference_cm = cm
-                break
+        # Find the maximum value across all confusion matrices for consistent colorbar
+        vmax = max(cm.max() for cm in confusion_matrices.values() if cm.sum() > 0)
         
-        if reference_cm is not None:
-            # Create temporary heatmap for colorbar
-            temp_ax = fig.add_subplot(111, frameon=False)
-            temp_ax.tick_params(labelcolor="none", bottom=False, left=False)
-            im = temp_ax.imshow(reference_cm, cmap='Blues', alpha=0)
-            cbar = fig.colorbar(im, ax=axes, location='right', shrink=0.8, pad=0.02)
-            cbar.set_label('Sample Count', fontweight='bold', rotation=270, labelpad=20)
-            temp_ax.remove()
+        # Create a mappable object for the colorbar without using a temporary axis
+        import matplotlib.cm as mpl_cm
+        import matplotlib.colors as mpl_colors
+        
+        norm = mpl_colors.Normalize(vmin=0, vmax=vmax)
+        sm = mpl_cm.ScalarMappable(norm=norm, cmap='Blues')
+        sm.set_array([])
+        
+        # Add colorbar to the figure
+        cbar = fig.colorbar(sm, ax=axes.ravel().tolist(), location='right', shrink=0.8, pad=0.02)
+        cbar.set_label('Sample Count', fontweight='bold', rotation=270, labelpad=20)
     
     plt.tight_layout()
-    plt.subplots_adjust(top=0.94, right=0.92)
+    plt.subplots_adjust(top=0.94, right=0.88)
     
     # Save plot
     filename = f"{split_name}_confusion_matrices_grid.png"
