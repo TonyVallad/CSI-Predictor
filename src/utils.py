@@ -1283,10 +1283,12 @@ def plot_training_curves(
     train_f1_scores: List[float],
     val_f1_scores: List[float],
     save_dir: str,
-    run_name: str
+    run_name: str,
+    train_precisions: List[float] = None,
+    val_precisions: List[float] = None
 ) -> None:
     """
-    Plot training curves for loss, accuracy, and F1 score.
+    Plot training curves for loss, accuracy, precision, and F1 score in a 2x2 grid.
     
     Args:
         train_losses: Training losses per epoch
@@ -1297,47 +1299,70 @@ def plot_training_curves(
         val_f1_scores: Validation F1 scores per epoch
         save_dir: Directory to save plots
         run_name: Name of the training run
+        train_precisions: Training precision scores per epoch (optional)
+        val_precisions: Validation precision scores per epoch (optional)
     """
     import matplotlib.pyplot as plt
     from pathlib import Path
+    from datetime import datetime
     
     save_path = Path(save_dir)
     save_path.mkdir(parents=True, exist_ok=True)
     
     epochs = range(1, len(train_losses) + 1)
     
-    # Create subplots
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    # Create 2x2 subplots
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     
-    # Loss plot
-    axes[0].plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
-    axes[0].plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
-    axes[0].set_title('Model Loss', fontsize=14, fontweight='bold')
-    axes[0].set_xlabel('Epoch')
-    axes[0].set_ylabel('Loss')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
+    # Top left: Accuracy
+    axes[0, 0].plot(epochs, train_accuracies, 'b-', label='Training Accuracy', linewidth=2)
+    axes[0, 0].plot(epochs, val_accuracies, 'r-', label='Validation Accuracy', linewidth=2)
+    axes[0, 0].set_title('Model Accuracy', fontsize=14, fontweight='bold')
+    axes[0, 0].set_xlabel('Epoch')
+    axes[0, 0].set_ylabel('Accuracy')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True, alpha=0.3)
     
-    # Accuracy plot
-    axes[1].plot(epochs, train_accuracies, 'b-', label='Training Accuracy', linewidth=2)
-    axes[1].plot(epochs, val_accuracies, 'r-', label='Validation Accuracy', linewidth=2)
-    axes[1].set_title('Model Accuracy', fontsize=14, fontweight='bold')
-    axes[1].set_xlabel('Epoch')
-    axes[1].set_ylabel('Accuracy')
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
+    # Top right: Loss
+    axes[0, 1].plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
+    axes[0, 1].plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
+    axes[0, 1].set_title('Model Loss', fontsize=14, fontweight='bold')
+    axes[0, 1].set_xlabel('Epoch')
+    axes[0, 1].set_ylabel('Loss')
+    axes[0, 1].legend()
+    axes[0, 1].grid(True, alpha=0.3)
     
-    # F1 Score plot
-    axes[2].plot(epochs, train_f1_scores, 'b-', label='Training F1 Score', linewidth=2)
-    axes[2].plot(epochs, val_f1_scores, 'r-', label='Validation F1 Score', linewidth=2)
-    axes[2].set_title('Model F1 Score', fontsize=14, fontweight='bold')
-    axes[2].set_xlabel('Epoch')
-    axes[2].set_ylabel('F1 Score')
-    axes[2].legend()
-    axes[2].grid(True, alpha=0.3)
+    # Bottom left: Precision
+    if train_precisions is not None and val_precisions is not None:
+        axes[1, 0].plot(epochs, train_precisions, 'b-', label='Training Precision', linewidth=2)
+        axes[1, 0].plot(epochs, val_precisions, 'r-', label='Validation Precision', linewidth=2)
+        axes[1, 0].set_title('Model Precision', fontsize=14, fontweight='bold')
+        axes[1, 0].set_xlabel('Epoch')
+        axes[1, 0].set_ylabel('Precision')
+        axes[1, 0].legend()
+        axes[1, 0].grid(True, alpha=0.3)
+    else:
+        # If precision data is not available, show a placeholder
+        axes[1, 0].text(0.5, 0.5, 'Precision data\nnot available', 
+                       ha='center', va='center', transform=axes[1, 0].transAxes,
+                       fontsize=12, style='italic', color='gray')
+        axes[1, 0].set_title('Model Precision', fontsize=14, fontweight='bold')
+        axes[1, 0].set_xlabel('Epoch')
+        axes[1, 0].set_ylabel('Precision')
     
-    # Overall formatting
-    plt.suptitle(f'Training Curves - {run_name}', fontsize=16, fontweight='bold')
+    # Bottom right: F1 Score
+    axes[1, 1].plot(epochs, train_f1_scores, 'b-', label='Training F1 Score', linewidth=2)
+    axes[1, 1].plot(epochs, val_f1_scores, 'r-', label='Validation F1 Score', linewidth=2)
+    axes[1, 1].set_title('Model F1 Score', fontsize=14, fontweight='bold')
+    axes[1, 1].set_xlabel('Epoch')
+    axes[1, 1].set_ylabel('F1 Score')
+    axes[1, 1].legend()
+    axes[1, 1].grid(True, alpha=0.3)
+    
+    # Overall formatting with timestamp subtitle
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    plt.suptitle(f'Training Curves - {run_name}\n{current_time}', 
+                 fontsize=16, fontweight='bold')
     plt.tight_layout()
     
     # Save plot

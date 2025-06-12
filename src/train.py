@@ -359,6 +359,8 @@ def train_model(config) -> None:
     val_f1_scores = []
     train_accuracies = []
     val_accuracies = []
+    train_precisions = []
+    val_precisions = []
     
     for epoch in range(1, config.n_epochs + 1):
         logger.info(f"Starting epoch {epoch}/{config.n_epochs}")
@@ -380,6 +382,8 @@ def train_model(config) -> None:
         val_f1_scores.append(val_metrics['f1_macro'])
         train_accuracies.append(train_metrics['accuracy'])
         val_accuracies.append(val_metrics['accuracy'])
+        train_precisions.append(train_metrics['precision_macro'])
+        val_precisions.append(val_metrics['precision_macro'])
         
         # Log metrics
         logger.info(f"Epoch {epoch}:")
@@ -477,7 +481,8 @@ def train_model(config) -> None:
             train_losses, val_losses,
             train_accuracies, val_accuracies,
             train_f1_scores, val_f1_scores,
-            str(graphs_dir), run_name
+            str(graphs_dir), run_name,
+            train_precisions, val_precisions
         )
     
     if use_wandb:
