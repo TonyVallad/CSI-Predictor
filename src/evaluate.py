@@ -22,7 +22,7 @@ from .utils import (
     logger, make_run_name, make_model_name, seed_everything, log_config,
     create_roc_curves, create_precision_recall_curves,
     create_confusion_matrix_grid, create_roc_curves_grid, create_precision_recall_curves_grid,
-    create_model_name_from_existing
+    create_model_name_from_existing, create_overall_confusion_matrix, create_summary_dashboard
 )
 
 
@@ -844,10 +844,10 @@ def evaluate_model(config) -> None:
         str(graphs_dir), "test", ignore_class=4
     )
     
-    # Create and save grid layouts
-    logger.info("Creating grid visualizations...")
+    # Create and save grid layouts and overall visualizations
+    logger.info("Creating comprehensive visualizations...")
     
-    # Confusion matrix grids
+    # Confusion matrix grids and overall plots
     create_confusion_matrix_grid(
         val_confusion_matrices, str(graphs_dir), "validation",
         eval_run_name
@@ -856,6 +856,15 @@ def evaluate_model(config) -> None:
     create_confusion_matrix_grid(
         test_confusion_matrices, str(graphs_dir), "test",
         eval_run_name
+    )
+    
+    # Overall confusion matrices
+    create_overall_confusion_matrix(
+        val_confusion_matrices, str(graphs_dir), "validation", eval_run_name
+    )
+    
+    create_overall_confusion_matrix(
+        test_confusion_matrices, str(graphs_dir), "test", eval_run_name
     )
     
     # ROC curves grids
@@ -878,6 +887,33 @@ def evaluate_model(config) -> None:
     create_precision_recall_curves_grid(
         test_probabilities, test_targets, zone_names, class_names,
         str(graphs_dir), "test", ignore_class=4
+    )
+    
+    # Create comprehensive summary dashboards
+    logger.info("Creating evaluation summary dashboards...")
+    
+    # Get overall confusion matrix for validation
+    val_overall_cm = sum([cm for cm in val_confusion_matrices.values() if cm.sum() > 0])
+    test_overall_cm = sum([cm for cm in test_confusion_matrices.values() if cm.sum() > 0])
+    
+    # Create validation summary dashboard
+    create_summary_dashboard(
+        None, None,  # No training metrics for evaluation
+        None, None,  # No training losses
+        None, None,  # No training precisions
+        None, None,  # No training F1 scores
+        val_overall_cm, val_roc_metrics,
+        str(graphs_dir), f"{eval_run_name}_validation", []
+    )
+    
+    # Create test summary dashboard
+    create_summary_dashboard(
+        None, None,  # No training metrics for evaluation
+        None, None,  # No training losses
+        None, None,  # No training precisions
+        None, None,  # No training F1 scores  
+        test_overall_cm, test_roc_metrics,
+        str(graphs_dir), f"{eval_run_name}_test", []
     )
     
     # Log to WandB

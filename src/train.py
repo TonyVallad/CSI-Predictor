@@ -20,7 +20,7 @@ import wandb
 from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
 from .models import build_model
-from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, make_model_name, log_config, plot_training_curves
+from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, make_model_name, log_config, plot_training_curves, plot_training_curves_grid, create_summary_dashboard
 from .metrics import compute_pytorch_f1_metrics, compute_precision_recall_metrics, compute_enhanced_f1_metrics
 
 
@@ -362,6 +362,14 @@ def train_model(config) -> None:
     train_precisions = []
     val_precisions = []
     
+    # Track zone-specific metrics for grid plots
+    train_zone_accuracies = {f"zone_{i+1}": [] for i in range(6)}
+    val_zone_accuracies = {f"zone_{i+1}": [] for i in range(6)}
+    train_zone_f1_scores = {f"zone_{i+1}": [] for i in range(6)}
+    val_zone_f1_scores = {f"zone_{i+1}": [] for i in range(6)}
+    train_zone_precisions = {f"zone_{i+1}": [] for i in range(6)}
+    val_zone_precisions = {f"zone_{i+1}": [] for i in range(6)}
+    
     for epoch in range(1, config.n_epochs + 1):
         logger.info(f"Starting epoch {epoch}/{config.n_epochs}")
         
@@ -384,6 +392,15 @@ def train_model(config) -> None:
         val_accuracies.append(val_metrics['accuracy'])
         train_precisions.append(train_metrics['precision_macro'])
         val_precisions.append(val_metrics['precision_macro'])
+        
+        # Store zone-specific metrics for grid plots
+        for i in range(6):
+            zone_key = f"zone_{i+1}"
+            train_zone_f1_scores[zone_key].append(train_metrics.get(f"f1_{zone_key}", 0.0))
+            val_zone_f1_scores[zone_key].append(val_metrics.get(f"f1_{zone_key}", 0.0))
+            train_zone_precisions[zone_key].append(train_metrics.get(f"precision_{zone_key}", 0.0))
+            val_zone_precisions[zone_key].append(val_metrics.get(f"precision_{zone_key}", 0.0))
+            # Note: Zone-specific accuracy would need to be computed separately if needed
         
         # Log metrics
         logger.info(f"Epoch {epoch}:")
@@ -473,16 +490,46 @@ def train_model(config) -> None:
     logger.info(f"Best validation loss: {best_val_loss:.4f}")
     logger.info(f"Best validation F1: {best_val_f1:.4f}")
     
-    # Generate training curves
+    # Generate training curves and visualizations
     if len(train_losses) > 0:
-        logger.info("Generating training curves...")
-        graphs_dir = Path(config.graph_dir) / train_model_name / "training_curves"
+        logger.info("Generating comprehensive training visualizations...")
+        graphs_dir = Path(config.graph_dir) / train_model_name
+        epochs_list = list(range(1, len(train_losses) + 1))
+        
+        # 1. Main training curves (2x2 grid)
         plot_training_curves(
             train_losses, val_losses,
             train_accuracies, val_accuracies,
             train_f1_scores, val_f1_scores,
-            str(graphs_dir), run_name,
+            str(graphs_dir / "training_curves"), run_name,
             train_precisions, val_precisions
+        )
+        
+        # 2. Zone-specific training curves grids
+        logger.info("Generating zone-specific training curves...")
+        
+        # F1 Score grid
+        plot_training_curves_grid(
+            train_zone_f1_scores, val_zone_f1_scores,
+            "f1_score", str(graphs_dir), run_name, epochs_list
+        )
+        
+        # Precision grid
+        plot_training_curves_grid(
+            train_zone_precisions, val_zone_precisions,
+            "precision", str(graphs_dir), run_name, epochs_list
+        )
+        
+        # 3. Create summary dashboard (saved directly in model folder)
+        logger.info("Generating summary dashboard...")
+        create_summary_dashboard(
+            train_accuracies, val_accuracies,
+            train_losses, val_losses,
+            train_precisions, val_precisions,
+            train_f1_scores, val_f1_scores,
+            None,  # confusion_matrix - will be updated from evaluation
+            None,  # roc_curve_data - will be updated from evaluation
+            str(graphs_dir), run_name, epochs_list
         )
     
     if use_wandb:

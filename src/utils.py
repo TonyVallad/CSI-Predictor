@@ -989,15 +989,13 @@ def create_roc_curves(
         plt.legend(loc="lower right")
         plt.grid(True, alpha=0.3)
         
-        # Save individual zone plot
-        filename = f"{split_name}_{zone_name}_roc_curves.png"
-        plt.savefig(zones_dir / filename, dpi=300, bbox_inches='tight')
+        # Don't save individual zone plots - only save grids
         plt.close()
         
         # Store zone metrics
         roc_metrics[zone_name] = zone_roc_data
         
-        logger.info(f"Created ROC curves for zone {zone_name}: {filename}")
+        logger.debug(f"Created ROC curves data for zone {zone_name}")
     
     # Create overall/macro-averaged ROC curves across all zones
     if roc_metrics:
@@ -1196,15 +1194,13 @@ def create_precision_recall_curves(
         plt.legend(loc="lower left")
         plt.grid(True, alpha=0.3)
         
-        # Save individual zone plot
-        filename = f"{split_name}_{zone_name}_pr_curves.png"
-        plt.savefig(zones_dir / filename, dpi=300, bbox_inches='tight')
+        # Don't save individual zone plots - only save grids
         plt.close()
         
         # Store zone metrics
         pr_metrics[zone_name] = zone_pr_data
         
-        logger.info(f"Created PR curves for zone {zone_name}: {filename}")
+        logger.debug(f"Created PR curves data for zone {zone_name}")
     
     # Create overall/macro-averaged PR curves across all zones
     if pr_metrics:
@@ -1751,6 +1747,358 @@ def create_precision_recall_curves_grid(
     logger.info(f"Saved PR curves grid: {save_path / filename}")
 
 
+def plot_training_curves_grid(
+    train_metrics_per_zone: Dict[str, List[float]],
+    val_metrics_per_zone: Dict[str, List[float]],
+    metric_name: str,
+    save_dir: str,
+    run_name: str,
+    epochs: List[int]
+) -> None:
+    """
+    Plot training curves for a specific metric across all zones in anatomical grid layout.
+    
+    Args:
+        train_metrics_per_zone: Training metrics per zone {zone_name: [values_per_epoch]}
+        val_metrics_per_zone: Validation metrics per zone {zone_name: [values_per_epoch]}
+        metric_name: Name of the metric (e.g., 'accuracy', 'f1', 'precision')
+        save_dir: Directory to save plots
+        run_name: Name of the training run
+        epochs: List of epoch numbers
+    """
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+    from datetime import datetime
+    
+    save_path = Path(save_dir) / "training_curves" / "zone_grids"
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    # Zone mapping to grid positions (matches anatomical layout)
+    zone_positions = {
+        "zone_1": (0, 0),    # right_sup - Top-left (patient's right superior)
+        "zone_2": (0, 1),    # left_sup - Top-right (patient's left superior)
+        "zone_3": (1, 0),    # right_mid - Middle-left (patient's right middle)
+        "zone_4": (1, 1),    # left_mid - Middle-right (patient's left middle)
+        "zone_5": (2, 0),    # right_inf - Bottom-left (patient's right inferior)
+        "zone_6": (2, 1)     # left_inf - Bottom-right (patient's left inferior)
+    }
+    
+    zone_display_names = {
+        "zone_1": "Right Superior",
+        "zone_2": "Left Superior",
+        "zone_3": "Right Middle", 
+        "zone_4": "Left Middle",
+        "zone_5": "Right Inferior",
+        "zone_6": "Left Inferior"
+    }
+    
+    # Create 3x2 subplot grid
+    fig, axes = plt.subplots(3, 2, figsize=(14, 16))
+    
+    for zone_key, (row, col) in zone_positions.items():
+        ax = axes[row, col]
+        
+        if zone_key in train_metrics_per_zone and zone_key in val_metrics_per_zone:
+            train_values = train_metrics_per_zone[zone_key]
+            val_values = val_metrics_per_zone[zone_key]
+            
+            if len(train_values) > 0 and len(val_values) > 0:
+                # Plot training and validation curves
+                ax.plot(epochs, train_values, 'b-', label=f'Training {metric_name.title()}', linewidth=2)
+                ax.plot(epochs, val_values, 'r-', label=f'Validation {metric_name.title()}', linewidth=2)
+                
+                # Get final values for display
+                final_train = train_values[-1] if train_values else 0
+                final_val = val_values[-1] if val_values else 0
+                
+                ax.set_title(f'{zone_display_names[zone_key]}\n'
+                            f'Train: {final_train:.3f}, Val: {final_val:.3f}', 
+                            fontweight='bold', fontsize=11)
+                ax.legend(loc="best", fontsize=9)
+                ax.grid(True, alpha=0.3)
+            else:
+                ax.text(0.5, 0.5, f'{zone_display_names[zone_key]}\nNo Data', 
+                       ha='center', va='center', transform=ax.transAxes,
+                       fontsize=12, style='italic', color='gray')
+        else:
+            ax.text(0.5, 0.5, f'{zone_display_names[zone_key]}\nNo Data', 
+                   ha='center', va='center', transform=ax.transAxes,
+                   fontsize=12, style='italic', color='gray')
+        
+        # Set labels only for bottom and left edges
+        if row == 2:  # Bottom row
+            ax.set_xlabel('Epoch', fontweight='bold')
+        if col == 0:  # Left column
+            ax.set_ylabel(metric_name.replace('_', ' ').title(), fontweight='bold')
+    
+    # Overall formatting with timestamp subtitle
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    plt.suptitle(f'{metric_name.replace("_", " ").title()} Training Curves - Zone Grid\n'
+                 f'{run_name} - {current_time}', 
+                 fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    
+    # Save plot
+    filename = f"{run_name}_{metric_name}_training_curves_grid.png"
+    plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved {metric_name} training curves grid: {save_path / filename}")
+
+
+def create_overall_confusion_matrix(
+    confusion_matrices: Dict[str, np.ndarray],
+    save_dir: str,
+    split_name: str = "validation",
+    run_name: str = "model"
+) -> None:
+    """
+    Create overall confusion matrix by summing across all zones.
+    
+    Args:
+        confusion_matrices: Dictionary of confusion matrices per zone
+        save_dir: Directory to save the plot
+        split_name: Name of the data split
+        run_name: Name of the model/run
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from pathlib import Path
+    
+    save_path = Path(save_dir) / "confusion_matrices" / "overall"
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
+    
+    # Sum all confusion matrices
+    overall_cm = None
+    valid_matrices = [cm for cm in confusion_matrices.values() if cm.sum() > 0]
+    
+    if not valid_matrices:
+        logger.warning("No valid confusion matrices found for overall plot")
+        return
+    
+    overall_cm = sum(valid_matrices)
+    
+    # Create figure
+    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+    
+    # Create heatmap
+    sns.heatmap(
+        overall_cm.astype(int), 
+        annot=True, 
+        fmt='d', 
+        cmap='Blues',
+        xticklabels=class_names,
+        yticklabels=class_names,
+        ax=ax,
+        square=True
+    )
+    
+    # Calculate overall accuracy
+    accuracy = np.trace(overall_cm) / np.sum(overall_cm) if np.sum(overall_cm) > 0 else 0
+    total_samples = np.sum(overall_cm)
+    
+    ax.set_title(f'Overall Confusion Matrix - All Zones Combined\n'
+                f'({split_name.title()} Set) - Accuracy: {accuracy:.3f} (n={total_samples})', 
+                fontweight='bold', fontsize=14)
+    ax.set_xlabel('Predicted CSI Score', fontweight='bold')
+    ax.set_ylabel('True CSI Score', fontweight='bold')
+    
+    plt.tight_layout()
+    
+    # Save plot
+    filename = f"{split_name}_overall_confusion_matrix.png"
+    plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved overall confusion matrix: {save_path / filename}")
+
+
+def create_summary_dashboard(
+    train_accuracies: List[float],
+    val_accuracies: List[float],
+    train_losses: List[float],
+    val_losses: List[float],
+    train_precisions: List[float],
+    val_precisions: List[float],
+    train_f1_scores: List[float],
+    val_f1_scores: List[float],
+    confusion_matrix: np.ndarray,
+    roc_curve_data: Dict[str, Dict],
+    save_dir: str,
+    run_name: str,
+    epochs: List[int]
+) -> None:
+    """
+    Create a summary dashboard with the most important visualizations in a 2x3 grid.
+    
+    Args:
+        train_accuracies: Training accuracy values per epoch
+        val_accuracies: Validation accuracy values per epoch
+        train_losses: Training loss values per epoch
+        val_losses: Validation loss values per epoch
+        train_precisions: Training precision values per epoch
+        val_precisions: Validation precision values per epoch
+        train_f1_scores: Training F1 score values per epoch
+        val_f1_scores: Validation F1 score values per epoch
+        confusion_matrix: Overall confusion matrix
+        roc_curve_data: ROC curve data for plotting
+        save_dir: Directory to save the plot
+        run_name: Name of the training run
+        epochs: List of epoch numbers
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from pathlib import Path
+    from datetime import datetime
+    
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    # Create 2x3 subplot grid
+    fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+    
+    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
+    colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#7209B7']
+    
+    # Top row: Accuracy, Loss, Confusion Matrix
+    
+    # Top left: Accuracy
+    if train_accuracies is not None and val_accuracies is not None and epochs:
+        axes[0, 0].plot(epochs, train_accuracies, 'b-', label='Training Accuracy', linewidth=2)
+        axes[0, 0].plot(epochs, val_accuracies, 'r-', label='Validation Accuracy', linewidth=2)
+        axes[0, 0].set_xlabel('Epoch')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True, alpha=0.3)
+    else:
+        axes[0, 0].text(0.5, 0.5, 'Training Accuracy\nNot Available', 
+                       ha='center', va='center', transform=axes[0, 0].transAxes,
+                       fontsize=12, style='italic', color='gray')
+    axes[0, 0].set_title('Model Accuracy', fontsize=14, fontweight='bold')
+    axes[0, 0].set_ylabel('Accuracy')
+    
+    # Top center: Loss  
+    if train_losses is not None and val_losses is not None and epochs:
+        axes[0, 1].plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
+        axes[0, 1].plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
+        axes[0, 1].set_xlabel('Epoch')
+        axes[0, 1].legend()
+        axes[0, 1].grid(True, alpha=0.3)
+    else:
+        axes[0, 1].text(0.5, 0.5, 'Training Loss\nNot Available', 
+                       ha='center', va='center', transform=axes[0, 1].transAxes,
+                       fontsize=12, style='italic', color='gray')
+    axes[0, 1].set_title('Model Loss', fontsize=14, fontweight='bold')
+    axes[0, 1].set_ylabel('Loss')
+    
+    # Top right: Confusion Matrix
+    if confusion_matrix is not None and confusion_matrix.sum() > 0:
+        sns.heatmap(
+            confusion_matrix.astype(int), 
+            annot=True, 
+            fmt='d', 
+            cmap='Blues',
+            xticklabels=class_names,
+            yticklabels=class_names,
+            ax=axes[0, 2],
+            square=True,
+            cbar=False
+        )
+        accuracy = np.trace(confusion_matrix) / np.sum(confusion_matrix)
+        axes[0, 2].set_title(f'Confusion Matrix\nAccuracy: {accuracy:.3f}', 
+                            fontweight='bold', fontsize=14)
+    else:
+        axes[0, 2].text(0.5, 0.5, 'Confusion Matrix\nNot Available', 
+                       ha='center', va='center', transform=axes[0, 2].transAxes,
+                       fontsize=12, style='italic', color='gray')
+        axes[0, 2].set_title('Confusion Matrix', fontweight='bold', fontsize=14)
+    
+    # Bottom row: Precision, F1 Score, ROC Curve
+    
+    # Bottom left: Precision
+    if train_precisions is not None and val_precisions is not None and epochs:
+        axes[1, 0].plot(epochs, train_precisions, 'b-', label='Training Precision', linewidth=2)
+        axes[1, 0].plot(epochs, val_precisions, 'r-', label='Validation Precision', linewidth=2)
+        axes[1, 0].set_xlabel('Epoch')
+        axes[1, 0].legend()
+        axes[1, 0].grid(True, alpha=0.3)
+    else:
+        axes[1, 0].text(0.5, 0.5, 'Training Precision\nNot Available', 
+                       ha='center', va='center', transform=axes[1, 0].transAxes,
+                       fontsize=12, style='italic', color='gray')
+    axes[1, 0].set_title('Model Precision', fontsize=14, fontweight='bold')
+    axes[1, 0].set_ylabel('Precision')
+    
+    # Bottom center: F1 Score
+    if train_f1_scores is not None and val_f1_scores is not None and epochs:
+        axes[1, 1].plot(epochs, train_f1_scores, 'b-', label='Training F1 Score', linewidth=2)
+        axes[1, 1].plot(epochs, val_f1_scores, 'r-', label='Validation F1 Score', linewidth=2)
+        axes[1, 1].set_xlabel('Epoch')
+        axes[1, 1].legend()
+        axes[1, 1].grid(True, alpha=0.3)
+    else:
+        axes[1, 1].text(0.5, 0.5, 'Training F1 Score\nNot Available', 
+                       ha='center', va='center', transform=axes[1, 1].transAxes,
+                       fontsize=12, style='italic', color='gray')
+    axes[1, 1].set_title('Model F1 Score', fontsize=14, fontweight='bold')
+    axes[1, 1].set_ylabel('F1 Score')
+    
+    # Bottom right: ROC Curve
+    if roc_curve_data and 'overall' in roc_curve_data:
+        overall_roc = roc_curve_data['overall']
+        auc_scores = []
+        
+        for class_name, class_data in overall_roc.items():
+            if class_name != 'grand_macro_avg' and 'mean_auc' in class_data:
+                class_idx = class_names.index(class_name) if class_name in class_names else 0
+                color = colors[class_idx % len(colors)]
+                auc_score = class_data['mean_auc']
+                auc_scores.append(auc_score)
+                
+                # Create a representative ROC curve for visualization
+                fpr = np.linspace(0, 1, 100)
+                tpr = fpr * auc_score + (1 - auc_score) * fpr**2  # Simplified curve
+                
+                axes[1, 2].plot(fpr, tpr, color=color, lw=2,
+                               label=f'{class_name} (AUC = {auc_score:.3f})')
+        
+        # Plot diagonal line
+        axes[1, 2].plot([0, 1], [0, 1], 'k--', lw=1, alpha=0.5, label='Random')
+        
+        if auc_scores:
+            mean_auc = np.mean(auc_scores)
+            axes[1, 2].set_title(f'ROC Curves\nMean AUC: {mean_auc:.3f}', 
+                                fontweight='bold', fontsize=14)
+        else:
+            axes[1, 2].set_title('ROC Curves', fontweight='bold', fontsize=14)
+            
+        axes[1, 2].set_xlim([0.0, 1.0])
+        axes[1, 2].set_ylim([0.0, 1.05])
+        axes[1, 2].set_xlabel('False Positive Rate')
+        axes[1, 2].set_ylabel('True Positive Rate')
+        axes[1, 2].legend(loc="lower right", fontsize=9)
+        axes[1, 2].grid(True, alpha=0.3)
+    else:
+        axes[1, 2].text(0.5, 0.5, 'ROC Curve\nNot Available', 
+                       ha='center', va='center', transform=axes[1, 2].transAxes,
+                       fontsize=12, style='italic', color='gray')
+        axes[1, 2].set_title('ROC Curves', fontweight='bold', fontsize=14)
+    
+    # Overall formatting with timestamp subtitle
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    plt.suptitle(f'Training Summary Dashboard - {run_name}\n{current_time}', 
+                 fontsize=18, fontweight='bold')
+    plt.tight_layout()
+    
+    # Save plot
+    filename = f"{run_name}_summary_dashboard.png"
+    plt.savefig(save_path / filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved summary dashboard: {save_path / filename}")
+
+
 # Export main utilities
 __all__ = [
     'EarlyStopping', 'MetricsTracker', 'AverageMeter',
@@ -1761,5 +2109,6 @@ __all__ = [
     'create_debug_dataset', 'make_run_name', 'make_model_name', 'create_model_name_from_existing', 'pretty_print_config',
     'print_config', 'log_config', 'setup_logging', 'logger',
     'create_roc_curves', 'create_precision_recall_curves', 'plot_training_curves',
-    'create_confusion_matrix_grid', 'create_roc_curves_grid', 'create_precision_recall_curves_grid'
+    'create_confusion_matrix_grid', 'create_roc_curves_grid', 'create_precision_recall_curves_grid',
+    'plot_training_curves_grid', 'create_overall_confusion_matrix', 'create_summary_dashboard'
 ] 
