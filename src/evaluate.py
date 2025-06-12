@@ -22,7 +22,8 @@ from .utils import (
     logger, make_run_name, make_model_name, seed_everything, log_config,
     create_roc_curves, create_precision_recall_curves,
     create_confusion_matrix_grid, create_roc_curves_grid, create_precision_recall_curves_grid,
-    create_model_name_from_existing, create_overall_confusion_matrix, create_summary_dashboard
+    create_model_name_from_existing, create_overall_confusion_matrix, create_summary_dashboard,
+    load_training_history
 )
 
 
@@ -898,29 +899,34 @@ def evaluate_model(config) -> None:
     # Create comprehensive summary dashboards
     logger.info("Creating evaluation summary dashboards...")
     
+    # Load training history to display training curves
+    history_path = graphs_dir / "training_history.json"
+    (train_losses, val_losses, train_accuracies, val_accuracies,
+     train_precisions, val_precisions, train_f1_scores, val_f1_scores, epochs_list) = load_training_history(str(history_path))
+    
     # Get overall confusion matrix for validation
     val_overall_cm = sum([cm for cm in val_confusion_matrices.values() if cm.sum() > 0])
     test_overall_cm = sum([cm for cm in test_confusion_matrices.values() if cm.sum() > 0])
     
     # Create validation summary dashboard
     create_summary_dashboard(
-        None, None,  # No training metrics for evaluation
-        None, None,  # No training losses
-        None, None,  # No training precisions
-        None, None,  # No training F1 scores
+        train_accuracies, val_accuracies,  # Load actual training curves
+        train_losses, val_losses,  # Load actual training losses
+        train_precisions, val_precisions,  # Load actual training precisions
+        train_f1_scores, val_f1_scores,  # Load actual training F1 scores
         val_overall_cm, val_roc_metrics,
-        str(graphs_dir), f"{eval_run_name}_validation", [],
+        str(graphs_dir), f"{eval_run_name}_validation", epochs_list,
         evaluation_metrics=val_overall_metrics
     )
     
     # Create test summary dashboard
     create_summary_dashboard(
-        None, None,  # No training metrics for evaluation
-        None, None,  # No training losses
-        None, None,  # No training precisions
-        None, None,  # No training F1 scores  
+        train_accuracies, val_accuracies,  # Load actual training curves
+        train_losses, val_losses,  # Load actual training losses
+        train_precisions, val_precisions,  # Load actual training precisions
+        train_f1_scores, val_f1_scores,  # Load actual training F1 scores
         test_overall_cm, test_roc_metrics,
-        str(graphs_dir), f"{eval_run_name}_test", [],
+        str(graphs_dir), f"{eval_run_name}_test", epochs_list,
         evaluation_metrics=test_overall_metrics
     )
     

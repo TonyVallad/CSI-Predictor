@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from datetime import datetime
 from pathlib import Path
+import json
 
 # Import and configure Loguru
 from loguru import logger
@@ -1964,47 +1965,31 @@ def create_summary_dashboard(
     class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
     colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#7209B7']
     
-    # Determine if we're in training mode or evaluation mode
-    is_training_mode = (train_accuracies is not None and val_accuracies is not None and 
-                       len(epochs) > 0 and len(train_accuracies) > 0)
-    is_evaluation_mode = evaluation_metrics is not None
-    
     # Top row: Accuracy, Loss, Confusion Matrix
     
     # Top left: Accuracy
-    if is_training_mode:
+    if train_accuracies is not None and val_accuracies is not None and len(epochs) > 0:
         axes[0, 0].plot(epochs, train_accuracies, 'b-', label='Training Accuracy', linewidth=2)
         axes[0, 0].plot(epochs, val_accuracies, 'r-', label='Validation Accuracy', linewidth=2)
         axes[0, 0].set_xlabel('Epoch')
         axes[0, 0].legend()
         axes[0, 0].grid(True, alpha=0.3)
-    elif is_evaluation_mode:
-        # Show static accuracy metric as a bar or text
-        acc_value = evaluation_metrics.get('overall_accuracy', 0.0)
-        axes[0, 0].bar(['Overall Accuracy'], [acc_value], color='skyblue', alpha=0.7)
-        axes[0, 0].set_ylim(0, 1)
-        axes[0, 0].text(0, acc_value + 0.02, f'{acc_value:.3f}', ha='center', fontweight='bold')
     else:
-        axes[0, 0].text(0.5, 0.5, 'Accuracy Data\nNot Available', 
+        axes[0, 0].text(0.5, 0.5, 'Training Accuracy\nNot Available', 
                        ha='center', va='center', transform=axes[0, 0].transAxes,
                        fontsize=12, style='italic', color='gray')
     axes[0, 0].set_title('Model Accuracy', fontsize=14, fontweight='bold')
     axes[0, 0].set_ylabel('Accuracy')
     
     # Top center: Loss  
-    if is_training_mode:
+    if train_losses is not None and val_losses is not None and len(epochs) > 0:
         axes[0, 1].plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
         axes[0, 1].plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
         axes[0, 1].set_xlabel('Epoch')
         axes[0, 1].legend()
         axes[0, 1].grid(True, alpha=0.3)
-    elif is_evaluation_mode:
-        # Show static loss metric
-        loss_value = evaluation_metrics.get('loss', 0.0)
-        axes[0, 1].bar(['Evaluation Loss'], [loss_value], color='salmon', alpha=0.7)
-        axes[0, 1].text(0, loss_value + loss_value*0.05, f'{loss_value:.3f}', ha='center', fontweight='bold')
     else:
-        axes[0, 1].text(0.5, 0.5, 'Loss Data\nNot Available', 
+        axes[0, 1].text(0.5, 0.5, 'Training Loss\nNot Available', 
                        ha='center', va='center', transform=axes[0, 1].transAxes,
                        fontsize=12, style='italic', color='gray')
     axes[0, 1].set_title('Model Loss', fontsize=14, fontweight='bold')
@@ -2035,40 +2020,28 @@ def create_summary_dashboard(
     # Bottom row: Precision, F1 Score, ROC Curve
     
     # Bottom left: Precision
-    if is_training_mode:
+    if train_precisions is not None and val_precisions is not None and len(epochs) > 0:
         axes[1, 0].plot(epochs, train_precisions, 'b-', label='Training Precision', linewidth=2)
         axes[1, 0].plot(epochs, val_precisions, 'r-', label='Validation Precision', linewidth=2)
         axes[1, 0].set_xlabel('Epoch')
         axes[1, 0].legend()
         axes[1, 0].grid(True, alpha=0.3)
-    elif is_evaluation_mode:
-        # Show static precision metric
-        prec_value = evaluation_metrics.get('overall_precision_macro', 0.0)
-        axes[1, 0].bar(['Overall Precision'], [prec_value], color='lightgreen', alpha=0.7)
-        axes[1, 0].set_ylim(0, 1)
-        axes[1, 0].text(0, prec_value + 0.02, f'{prec_value:.3f}', ha='center', fontweight='bold')
     else:
-        axes[1, 0].text(0.5, 0.5, 'Precision Data\nNot Available', 
+        axes[1, 0].text(0.5, 0.5, 'Training Precision\nNot Available', 
                        ha='center', va='center', transform=axes[1, 0].transAxes,
                        fontsize=12, style='italic', color='gray')
     axes[1, 0].set_title('Model Precision', fontsize=14, fontweight='bold')
     axes[1, 0].set_ylabel('Precision')
     
     # Bottom center: F1 Score
-    if is_training_mode:
+    if train_f1_scores is not None and val_f1_scores is not None and len(epochs) > 0:
         axes[1, 1].plot(epochs, train_f1_scores, 'b-', label='Training F1 Score', linewidth=2)
         axes[1, 1].plot(epochs, val_f1_scores, 'r-', label='Validation F1 Score', linewidth=2)
         axes[1, 1].set_xlabel('Epoch')
         axes[1, 1].legend()
         axes[1, 1].grid(True, alpha=0.3)
-    elif is_evaluation_mode:
-        # Show static F1 metric
-        f1_value = evaluation_metrics.get('overall_f1_macro', 0.0)
-        axes[1, 1].bar(['Overall F1 Score'], [f1_value], color='orange', alpha=0.7)
-        axes[1, 1].set_ylim(0, 1)
-        axes[1, 1].text(0, f1_value + 0.02, f'{f1_value:.3f}', ha='center', fontweight='bold')
     else:
-        axes[1, 1].text(0.5, 0.5, 'F1 Score Data\nNot Available', 
+        axes[1, 1].text(0.5, 0.5, 'Training F1 Score\nNot Available', 
                        ha='center', va='center', transform=axes[1, 1].transAxes,
                        fontsize=12, style='italic', color='gray')
     axes[1, 1].set_title('Model F1 Score', fontsize=14, fontweight='bold')
@@ -2129,6 +2102,91 @@ def create_summary_dashboard(
     logger.info(f"Saved summary dashboard: {save_path / filename}")
 
 
+def save_training_history(
+    train_losses: List[float],
+    val_losses: List[float],
+    train_accuracies: List[float],
+    val_accuracies: List[float],
+    train_precisions: List[float],
+    val_precisions: List[float],
+    train_f1_scores: List[float],
+    val_f1_scores: List[float],
+    save_path: str
+) -> None:
+    """
+    Save training history to a file for later use in evaluation dashboard.
+    
+    Args:
+        train_losses: Training losses per epoch
+        val_losses: Validation losses per epoch
+        train_accuracies: Training accuracies per epoch
+        val_accuracies: Validation accuracies per epoch
+        train_precisions: Training precisions per epoch
+        val_precisions: Validation precisions per epoch
+        train_f1_scores: Training F1 scores per epoch
+        val_f1_scores: Validation F1 scores per epoch
+        save_path: Path to save the history file
+    """
+    import json
+    from pathlib import Path
+    
+    history_data = {
+        'train_losses': train_losses,
+        'val_losses': val_losses,
+        'train_accuracies': train_accuracies,
+        'val_accuracies': val_accuracies,
+        'train_precisions': train_precisions,
+        'val_precisions': val_precisions,
+        'train_f1_scores': train_f1_scores,
+        'val_f1_scores': val_f1_scores,
+        'epochs': list(range(1, len(train_losses) + 1))
+    }
+    
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(save_path, 'w') as f:
+        json.dump(history_data, f, indent=2)
+    
+    logger.info(f"Saved training history to {save_path}")
+
+
+def load_training_history(history_path: str) -> tuple:
+    """
+    Load training history from a file.
+    
+    Args:
+        history_path: Path to the history file
+        
+    Returns:
+        Tuple of (train_losses, val_losses, train_accuracies, val_accuracies,
+                 train_precisions, val_precisions, train_f1_scores, val_f1_scores, epochs)
+    """
+    import json
+    from pathlib import Path
+    
+    if not Path(history_path).exists():
+        logger.warning(f"Training history file not found: {history_path}")
+        return None, None, None, None, None, None, None, None, []
+    
+    try:
+        with open(history_path, 'r') as f:
+            history_data = json.load(f)
+        
+        return (
+            history_data.get('train_losses', []),
+            history_data.get('val_losses', []),
+            history_data.get('train_accuracies', []),
+            history_data.get('val_accuracies', []),
+            history_data.get('train_precisions', []),
+            history_data.get('val_precisions', []),
+            history_data.get('train_f1_scores', []),
+            history_data.get('val_f1_scores', []),
+            history_data.get('epochs', [])
+        )
+    except Exception as e:
+        logger.error(f"Error loading training history: {e}")
+        return None, None, None, None, None, None, None, None, []
+
+
 # Export main utilities
 __all__ = [
     'EarlyStopping', 'MetricsTracker', 'AverageMeter',
@@ -2140,5 +2198,6 @@ __all__ = [
     'print_config', 'log_config', 'setup_logging', 'logger',
     'create_roc_curves', 'create_precision_recall_curves', 'plot_training_curves',
     'create_confusion_matrix_grid', 'create_roc_curves_grid', 'create_precision_recall_curves_grid',
-    'plot_training_curves_grid', 'create_overall_confusion_matrix', 'create_summary_dashboard'
+    'plot_training_curves_grid', 'create_overall_confusion_matrix', 'create_summary_dashboard',
+    'save_training_history', 'load_training_history'
 ] 

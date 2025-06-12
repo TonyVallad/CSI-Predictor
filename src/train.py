@@ -20,7 +20,7 @@ import wandb
 from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
 from .models import build_model
-from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, make_model_name, log_config, plot_training_curves, plot_training_curves_grid, create_summary_dashboard
+from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, make_model_name, log_config, plot_training_curves, plot_training_curves_grid, create_summary_dashboard, save_training_history
 from .metrics import compute_pytorch_f1_metrics, compute_precision_recall_metrics, compute_enhanced_f1_metrics
 
 
@@ -520,7 +520,18 @@ def train_model(config) -> None:
             "precision", str(graphs_dir), run_name, epochs_list
         )
         
-        # 3. Create summary dashboard (saved directly in model folder)
+        # 3. Save training history for evaluation dashboard
+        logger.info("Saving training history...")
+        history_path = graphs_dir / "training_history.json"
+        save_training_history(
+            train_losses, val_losses,
+            train_accuracies, val_accuracies,
+            train_precisions, val_precisions,
+            train_f1_scores, val_f1_scores,
+            str(history_path)
+        )
+        
+        # 4. Create summary dashboard (saved directly in model folder)
         logger.info("Generating summary dashboard...")
         create_summary_dashboard(
             train_accuracies, val_accuracies,
