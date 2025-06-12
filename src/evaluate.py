@@ -500,10 +500,16 @@ def compute_overall_metrics(predictions: np.ndarray, targets: np.ndarray) -> Dic
     f1_metrics = compute_pytorch_f1_metrics(logits, target_tensor, ignore_index=4)
     accuracy_metrics = compute_accuracy(logits, target_tensor, ignore_index=4)
     
+    # Import precision/recall metrics
+    from .metrics import compute_precision_recall_metrics
+    pr_metrics = compute_precision_recall_metrics(logits, target_tensor, ignore_index=4)
+    
     return {
         'overall_f1_macro': f1_metrics['f1_overall'],
         'overall_f1_weighted': f1_metrics['f1_overall'],  # Use same as macro for simplicity
         'overall_accuracy': accuracy_metrics['acc_overall'],
+        'overall_precision_macro': pr_metrics['precision_overall'],
+        'overall_recall_macro': pr_metrics['recall_overall'],
         'total_valid_samples': int((targets != 4).sum())
     }
 
@@ -903,7 +909,8 @@ def evaluate_model(config) -> None:
         None, None,  # No training precisions
         None, None,  # No training F1 scores
         val_overall_cm, val_roc_metrics,
-        str(graphs_dir), f"{eval_run_name}_validation", []
+        str(graphs_dir), f"{eval_run_name}_validation", [],
+        evaluation_metrics=val_overall_metrics
     )
     
     # Create test summary dashboard
@@ -913,7 +920,8 @@ def evaluate_model(config) -> None:
         None, None,  # No training precisions
         None, None,  # No training F1 scores  
         test_overall_cm, test_roc_metrics,
-        str(graphs_dir), f"{eval_run_name}_test", []
+        str(graphs_dir), f"{eval_run_name}_test", [],
+        evaluation_metrics=test_overall_metrics
     )
     
     # Log to WandB

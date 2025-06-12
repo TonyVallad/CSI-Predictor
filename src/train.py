@@ -527,9 +527,10 @@ def train_model(config) -> None:
             train_losses, val_losses,
             train_precisions, val_precisions,
             train_f1_scores, val_f1_scores,
-            None,  # confusion_matrix - will be updated from evaluation
-            None,  # roc_curve_data - will be updated from evaluation
-            str(graphs_dir), run_name, epochs_list
+            None,  # confusion_matrix - not available during training
+            None,  # roc_curve_data - not available during training
+            str(graphs_dir), run_name, epochs_list,
+            evaluation_metrics=None  # No static evaluation metrics during training
         )
     
     if use_wandb:

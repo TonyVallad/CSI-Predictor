@@ -1928,7 +1928,8 @@ def create_summary_dashboard(
     roc_curve_data: Dict[str, Dict],
     save_dir: str,
     run_name: str,
-    epochs: List[int]
+    epochs: List[int],
+    evaluation_metrics: Dict[str, float] = None
 ) -> None:
     """
     Create a summary dashboard with the most important visualizations in a 2x3 grid.
@@ -1947,6 +1948,7 @@ def create_summary_dashboard(
         save_dir: Directory to save the plot
         run_name: Name of the training run
         epochs: List of epoch numbers
+        evaluation_metrics: Static evaluation metrics for eval mode
     """
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -1962,31 +1964,47 @@ def create_summary_dashboard(
     class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
     colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#7209B7']
     
+    # Determine if we're in training mode or evaluation mode
+    is_training_mode = (train_accuracies is not None and val_accuracies is not None and 
+                       len(epochs) > 0 and len(train_accuracies) > 0)
+    is_evaluation_mode = evaluation_metrics is not None
+    
     # Top row: Accuracy, Loss, Confusion Matrix
     
     # Top left: Accuracy
-    if train_accuracies is not None and val_accuracies is not None and epochs:
+    if is_training_mode:
         axes[0, 0].plot(epochs, train_accuracies, 'b-', label='Training Accuracy', linewidth=2)
         axes[0, 0].plot(epochs, val_accuracies, 'r-', label='Validation Accuracy', linewidth=2)
         axes[0, 0].set_xlabel('Epoch')
         axes[0, 0].legend()
         axes[0, 0].grid(True, alpha=0.3)
+    elif is_evaluation_mode:
+        # Show static accuracy metric as a bar or text
+        acc_value = evaluation_metrics.get('overall_accuracy', 0.0)
+        axes[0, 0].bar(['Overall Accuracy'], [acc_value], color='skyblue', alpha=0.7)
+        axes[0, 0].set_ylim(0, 1)
+        axes[0, 0].text(0, acc_value + 0.02, f'{acc_value:.3f}', ha='center', fontweight='bold')
     else:
-        axes[0, 0].text(0.5, 0.5, 'Training Accuracy\nNot Available', 
+        axes[0, 0].text(0.5, 0.5, 'Accuracy Data\nNot Available', 
                        ha='center', va='center', transform=axes[0, 0].transAxes,
                        fontsize=12, style='italic', color='gray')
     axes[0, 0].set_title('Model Accuracy', fontsize=14, fontweight='bold')
     axes[0, 0].set_ylabel('Accuracy')
     
     # Top center: Loss  
-    if train_losses is not None and val_losses is not None and epochs:
+    if is_training_mode:
         axes[0, 1].plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
         axes[0, 1].plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
         axes[0, 1].set_xlabel('Epoch')
         axes[0, 1].legend()
         axes[0, 1].grid(True, alpha=0.3)
+    elif is_evaluation_mode:
+        # Show static loss metric
+        loss_value = evaluation_metrics.get('loss', 0.0)
+        axes[0, 1].bar(['Evaluation Loss'], [loss_value], color='salmon', alpha=0.7)
+        axes[0, 1].text(0, loss_value + loss_value*0.05, f'{loss_value:.3f}', ha='center', fontweight='bold')
     else:
-        axes[0, 1].text(0.5, 0.5, 'Training Loss\nNot Available', 
+        axes[0, 1].text(0.5, 0.5, 'Loss Data\nNot Available', 
                        ha='center', va='center', transform=axes[0, 1].transAxes,
                        fontsize=12, style='italic', color='gray')
     axes[0, 1].set_title('Model Loss', fontsize=14, fontweight='bold')
@@ -2017,28 +2035,40 @@ def create_summary_dashboard(
     # Bottom row: Precision, F1 Score, ROC Curve
     
     # Bottom left: Precision
-    if train_precisions is not None and val_precisions is not None and epochs:
+    if is_training_mode:
         axes[1, 0].plot(epochs, train_precisions, 'b-', label='Training Precision', linewidth=2)
         axes[1, 0].plot(epochs, val_precisions, 'r-', label='Validation Precision', linewidth=2)
         axes[1, 0].set_xlabel('Epoch')
         axes[1, 0].legend()
         axes[1, 0].grid(True, alpha=0.3)
+    elif is_evaluation_mode:
+        # Show static precision metric
+        prec_value = evaluation_metrics.get('overall_precision_macro', 0.0)
+        axes[1, 0].bar(['Overall Precision'], [prec_value], color='lightgreen', alpha=0.7)
+        axes[1, 0].set_ylim(0, 1)
+        axes[1, 0].text(0, prec_value + 0.02, f'{prec_value:.3f}', ha='center', fontweight='bold')
     else:
-        axes[1, 0].text(0.5, 0.5, 'Training Precision\nNot Available', 
+        axes[1, 0].text(0.5, 0.5, 'Precision Data\nNot Available', 
                        ha='center', va='center', transform=axes[1, 0].transAxes,
                        fontsize=12, style='italic', color='gray')
     axes[1, 0].set_title('Model Precision', fontsize=14, fontweight='bold')
     axes[1, 0].set_ylabel('Precision')
     
     # Bottom center: F1 Score
-    if train_f1_scores is not None and val_f1_scores is not None and epochs:
+    if is_training_mode:
         axes[1, 1].plot(epochs, train_f1_scores, 'b-', label='Training F1 Score', linewidth=2)
         axes[1, 1].plot(epochs, val_f1_scores, 'r-', label='Validation F1 Score', linewidth=2)
         axes[1, 1].set_xlabel('Epoch')
         axes[1, 1].legend()
         axes[1, 1].grid(True, alpha=0.3)
+    elif is_evaluation_mode:
+        # Show static F1 metric
+        f1_value = evaluation_metrics.get('overall_f1_macro', 0.0)
+        axes[1, 1].bar(['Overall F1 Score'], [f1_value], color='orange', alpha=0.7)
+        axes[1, 1].set_ylim(0, 1)
+        axes[1, 1].text(0, f1_value + 0.02, f'{f1_value:.3f}', ha='center', fontweight='bold')
     else:
-        axes[1, 1].text(0.5, 0.5, 'Training F1 Score\nNot Available', 
+        axes[1, 1].text(0.5, 0.5, 'F1 Score Data\nNot Available', 
                        ha='center', va='center', transform=axes[1, 1].transAxes,
                        fontsize=12, style='italic', color='gray')
     axes[1, 1].set_title('Model F1 Score', fontsize=14, fontweight='bold')
