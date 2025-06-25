@@ -81,13 +81,13 @@ def get_pipeline_images() -> List[str]:
 
 def concatenate_images_horizontally(image_paths: List[str]) -> Image.Image:
     """
-    Concatenate multiple images horizontally.
+    Concatenate multiple images horizontally with 1px black vertical lines between them.
     
     Args:
         image_paths (List[str]): List of paths to images to concatenate
         
     Returns:
-        Image.Image: Concatenated image
+        Image.Image: Concatenated image with vertical separators
     """
     images = []
     
@@ -103,20 +103,29 @@ def concatenate_images_horizontally(image_paths: List[str]) -> Image.Image:
     widths = [img.width for img in images]
     heights = [img.height for img in images]
     
-    # Use the maximum height and sum of widths
+    # Use the maximum height and sum of widths plus separators
     max_height = max(heights)
-    total_width = sum(widths)
+    separator_width = 1
+    num_separators = len(images) - 1  # One separator between each pair of images
+    total_width = sum(widths) + (num_separators * separator_width)
     
     # Create a new image with the combined dimensions
     concatenated = Image.new('RGB', (total_width, max_height), (255, 255, 255))
     
-    # Paste each image
+    # Paste each image with separators
     x_offset = 0
-    for img in images:
+    for i, img in enumerate(images):
         # If image height is less than max_height, center it vertically
         y_offset = (max_height - img.height) // 2
         concatenated.paste(img, (x_offset, y_offset))
         x_offset += img.width
+        
+        # Add vertical separator after each image except the last one
+        if i < len(images) - 1:
+            # Draw a black vertical line
+            for y in range(max_height):
+                concatenated.putpixel((x_offset, y), (0, 0, 0))  # Black pixel
+            x_offset += separator_width
     
     return concatenated
 
@@ -125,17 +134,8 @@ def main():
     Example usage of the concat_images function.
     """
     # Example: Concatenate 5 images per batch
-    num_images = int(input("Enter number of images per batch: "))
+    num_images = int(input("Enter number of images per batch: (6 to fill screen) "))
     concat_images(num_images)
 
 if __name__ == "__main__":
     main()
-
-# Usage Examples:
-# ===============
-
-# Concatenate 5 images per batch
-# concat_images(5)
-
-# Concatenate 3 images per batch, save to a different directory
-# concat_images(3, "/path/to/output/folder")
