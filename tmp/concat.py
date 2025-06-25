@@ -32,11 +32,9 @@ def concat_images(num_images_per_batch: int, output_dir: str = None) -> None:
     for i in range(0, len(image_files), num_images_per_batch):
         batch_files = image_files[i:i + num_images_per_batch]
         
-        # Skip incomplete batches at the end if desired
-        # Comment out the next two lines if you want to process incomplete batches
+        # Process incomplete batches at the end
         if len(batch_files) < num_images_per_batch:
-            print(f"Skipping incomplete batch with {len(batch_files)} images")
-            break
+            print(f"Processing incomplete batch with {len(batch_files)} images")
         
         try:
             concatenated_image = concatenate_images_horizontally(batch_files)
