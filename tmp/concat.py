@@ -122,9 +122,10 @@ def concatenate_images_horizontally(image_paths: List[str]) -> Image.Image:
         
         # Add vertical separator after each image except the last one
         if i < len(images) - 1:
-            # Draw a black vertical line
-            for y in range(max_height):
-                concatenated.putpixel((x_offset, y), (0, 0, 0))  # Black pixel
+            # Draw a black vertical line of specified width
+            for x in range(separator_width):
+                for y in range(max_height):
+                    concatenated.putpixel((x_offset + x, y), (0, 0, 0))  # Black pixel
             x_offset += separator_width
     
     return concatenated
