@@ -103,7 +103,7 @@ def concatenate_images_horizontally(image_paths: List[str]) -> Image.Image:
     
     # Use the maximum height and sum of widths plus separators
     max_height = max(heights)
-    separator_width = 3
+    separator_width = 50
     num_separators = len(images) - 1  # One separator between each pair of images
     total_width = sum(widths) + (num_separators * separator_width)
     
