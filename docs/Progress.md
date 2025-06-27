@@ -3,7 +3,7 @@
 ## 2025-06-24
 - Updated segmentation step by improving segmentation accuracy and differenciating between left/right lungs.
 
-## 2025-06-25
+## 2025-06-27
 - Updated segmentation step by only keeping the main segmentation zone for each lung.
 - Reduced crop margin from **** to 50 px.
 - 
@@ -19,5 +19,5 @@
 - Color text for labels on Overlay images.
 - Manually test model with a few images to verify everything works as intended.
 
-# Todo (maybe)
+## Todo (maybe)
 - Test model performance when giving it the same image but with different ranges for pixel value.
