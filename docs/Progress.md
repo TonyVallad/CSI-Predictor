@@ -5,18 +5,15 @@
 
 ## 2025-06-27
 - Updated segmentation step by only keeping the main segmentation zone for each lung.
-- Reduced crop margin from **** to 50 px.
-- 
+- Reduced crop margin from 180 to 50 px. (now can be set at the beginning of the notebook)
+- Fixed crop not working correctly. (Overlay cyan rectangle, crop on masks, final image crop)
 
 ## Todo
-- Remove margin from cropping. (or reduce)
-- Keep only main zone during segmentation for each lung.
 - Fix ROC curve. (overall)
 - Fix pixel value.
 - Remove unrelated images.
 - Implement zone focus (6 zones + segmentation mask once it's ready)
 - Calculate the average CSI and compare it to labeled data.
-- Color text for labels on Overlay images.
 - Manually test model with a few images to verify everything works as intended.
 
 ## Todo (maybe)
