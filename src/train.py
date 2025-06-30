@@ -169,14 +169,30 @@ def train_epoch(
     all_predictions = []
     all_targets = []
     
+    # Check if model supports zone masking
+    is_zone_masking_model = hasattr(model, 'ZONE_MAPPING')
+    
     progress_bar = tqdm(train_loader, desc=f"Epoch {epoch} [Train]")
     
-    for batch_idx, (images, targets) in enumerate(progress_bar):
+    for batch_idx, batch_data in enumerate(progress_bar):
+        # Handle both old and new data formats
+        if len(batch_data) == 3:  # New format: (images, targets, file_ids)
+            images, targets, file_ids = batch_data
+        else:  # Old format: (images, targets)
+            images, targets = batch_data
+            file_ids = None
+        
         images, targets = images.to(device), targets.to(device)
         
         # Forward pass
         optimizer.zero_grad()
-        outputs = model(images)  # [batch_size, n_zones, n_classes]
+        
+        # Use zone masking if model supports it and file_ids are available
+        if is_zone_masking_model and file_ids is not None:
+            outputs = model(images, file_ids)  # [batch_size, n_zones, n_classes]
+        else:
+            outputs = model(images)  # [batch_size, n_zones, n_classes]
+        
         loss = criterion(outputs, targets)
         
         # Backward pass
@@ -237,12 +253,27 @@ def validate_epoch(
     all_predictions = []
     all_targets = []
     
+    # Check if model supports zone masking
+    is_zone_masking_model = hasattr(model, 'ZONE_MAPPING')
+    
     with torch.no_grad():
-        for images, targets in tqdm(val_loader, desc="Validation"):
+        for batch_data in tqdm(val_loader, desc="Validation"):
+            # Handle both old and new data formats
+            if len(batch_data) == 3:  # New format: (images, targets, file_ids)
+                images, targets, file_ids = batch_data
+            else:  # Old format: (images, targets)
+                images, targets = batch_data
+                file_ids = None
+            
             images, targets = images.to(device), targets.to(device)
             
             # Forward pass
-            outputs = model(images)
+            # Use zone masking if model supports it and file_ids are available
+            if is_zone_masking_model and file_ids is not None:
+                outputs = model(images, file_ids)
+            else:
+                outputs = model(images)
+            
             loss = criterion(outputs, targets)
             
             # Track metrics

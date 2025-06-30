@@ -381,12 +381,26 @@ def evaluate_model_on_loader(
     all_probabilities = []
     total_loss = 0.0
     
+    # Check if model supports zone masking
+    is_zone_masking_model = hasattr(model, 'ZONE_MAPPING')
+    
     with torch.no_grad():
-        for images, targets in tqdm(data_loader, desc="Evaluating"):
+        for batch_data in tqdm(data_loader, desc="Evaluating"):
+            # Handle both old and new data formats
+            if len(batch_data) == 3:  # New format: (images, targets, file_ids)
+                images, targets, file_ids = batch_data
+            else:  # Old format: (images, targets)
+                images, targets = batch_data
+                file_ids = None
+            
             images, targets = images.to(device), targets.to(device)
             
             # Forward pass
-            outputs = model(images)  # [batch_size, n_zones, n_classes]
+            # Use zone masking if model supports it and file_ids are available
+            if is_zone_masking_model and file_ids is not None:
+                outputs = model(images, file_ids)  # [batch_size, n_zones, n_classes]
+            else:
+                outputs = model(images)  # [batch_size, n_zones, n_classes]
             
             # Compute loss if criterion provided
             if criterion is not None:

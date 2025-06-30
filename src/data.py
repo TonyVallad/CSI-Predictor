@@ -415,7 +415,7 @@ class CSIDataset(Dataset):
         """Return dataset length."""
         return len(self.dataframe)
     
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, str]:
         """
         Get dataset item with optional RadDINO processor support.
         
@@ -423,13 +423,13 @@ class CSIDataset(Dataset):
             idx: Item index
             
         Returns:
-            Tuple of (image_tensor, label_tensor)
+            Tuple of (image_tensor, label_tensor, file_id)
             
         Note: Returns classification targets (class indices) for cross-entropy loss.
         Label tensor shape: (6,) with values in {0,1,2,3,4} representing classes.
         """
         row = self.dataframe.iloc[idx]
-        file_id = row['FileID']
+        file_id = str(row['FileID'])  # Ensure file_id is string for consistency
         
         # Load image (from cache or disk)
         if self.load_to_memory and idx in self.cached_images:
@@ -439,8 +439,11 @@ class CSIDataset(Dataset):
                 raise RuntimeError(f"Cached image at index {idx} is None")
         else:
             # Load from disk
-            # Automatically append .png extension to FileID
-            image_filename = f"{file_id}.png"
+            # Automatically append .png extension to FileID if not present
+            if not file_id.endswith(('.png', '.jpg', '.jpeg')):
+                image_filename = f"{file_id}.png"
+            else:
+                image_filename = file_id
             image_path = self.data_path / image_filename
             try:
                 image = Image.open(image_path).convert('RGB')
@@ -472,7 +475,8 @@ class CSIDataset(Dataset):
         # Convert to classification targets (already in range 0-4)
         label_tensor = torch.tensor(labels, dtype=torch.long)
         
-        return image, label_tensor
+        # Return file_id for zone masking support
+        return image, label_tensor, file_id
 
 
 def load_and_split_data(

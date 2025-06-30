@@ -400,7 +400,13 @@ def show_batch(
     # Get a batch from the data loader
     data_iter = iter(data_loader)
     try:
-        images, labels = next(data_iter)
+        batch_data = next(data_iter)
+        # Handle both old and new data formats
+        if len(batch_data) == 3:  # New format: (images, labels, file_ids)
+            images, labels, file_ids = batch_data
+        else:  # Old format: (images, labels)
+            images, labels = batch_data
+            file_ids = None
     except StopIteration:
         print("Data loader is empty")
         return

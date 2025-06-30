@@ -167,11 +167,16 @@ class CSIModelWithZoneMasking(nn.Module):
             Tuple of (left_lung_mask, right_lung_mask) or (None, None) if not found
         """
         try:
-            left_mask_path = Path(self.masks_path) / f"{file_id}_left_lung_mask.png"
-            right_mask_path = Path(self.masks_path) / f"{file_id}_right_lung_mask.png"
+            # Extract base file ID (remove extension if present)
+            base_file_id = str(file_id)
+            if '.' in base_file_id:
+                base_file_id = base_file_id.split('.')[0]
+            
+            left_mask_path = Path(self.masks_path) / f"{base_file_id}_left_lung_mask.png"
+            right_mask_path = Path(self.masks_path) / f"{base_file_id}_right_lung_mask.png"
             
             if not (left_mask_path.exists() and right_mask_path.exists()):
-                logger.warning(f"Segmentation masks not found for {file_id}, using grid-only")
+                logger.debug(f"Segmentation masks not found for {base_file_id}, using grid-only")
                 return None, None
             
             # Load masks
@@ -179,7 +184,7 @@ class CSIModelWithZoneMasking(nn.Module):
             right_mask = cv2.imread(str(right_mask_path), cv2.IMREAD_GRAYSCALE)
             
             if left_mask is None or right_mask is None:
-                logger.warning(f"Failed to load segmentation masks for {file_id}")
+                logger.warning(f"Failed to load segmentation masks for {base_file_id}")
                 return None, None
             
             # Resize to target dimensions
