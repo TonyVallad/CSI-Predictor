@@ -101,6 +101,12 @@ class Config:
     model_arch: str = "resnet50"
     use_official_processor: bool = False  # Whether to use official RadDINO processor
     
+    # Zone Masking Configuration
+    use_segmentation_masking: bool = True
+    masking_strategy: str = "attention"  # "zero" or "attention"
+    attention_strength: float = 0.7
+    masks_path: str = "/home/pyuser/data/Paradise_Masks"
+    
     # Internal fields (not for external configuration)
     _env_vars: Dict[str, Any] = field(default_factory=dict, repr=False)
     _ini_vars: Dict[str, Any] = field(default_factory=dict, repr=False)
@@ -392,6 +398,12 @@ class ConfigLoader:
             model_arch=self.get_config_value("MODEL_ARCH", "resnet50", str),
             use_official_processor=self.get_config_value("USE_OFFICIAL_PROCESSOR", False, bool),
             
+            # Zone Masking Configuration
+            use_segmentation_masking=self.get_config_value("USE_SEGMENTATION_MASKING", True, bool),
+            masking_strategy=self.get_config_value("MASKING_STRATEGY", "attention", str),
+            attention_strength=self.get_config_value("ATTENTION_STRENGTH", 0.7, float),
+            masks_path=self.get_config_value("MASKS_PATH", "/home/pyuser/data/Paradise_Masks", str),
+            
             # Internal
             _env_vars=self._env_vars.copy(),
             _ini_vars=self._ini_vars.copy(),
@@ -446,6 +458,14 @@ class ConfigLoader:
         if config.optimizer.lower() not in valid_optimizers:
             errors.append(f"optimizer must be one of {valid_optimizers}, got {config.optimizer}")
         
+        # Validate zone masking configuration
+        valid_masking_strategies = ["zero", "attention"]
+        if config.masking_strategy.lower() not in valid_masking_strategies:
+            errors.append(f"masking_strategy must be one of {valid_masking_strategies}, got {config.masking_strategy}")
+        
+        if not (0.0 <= config.attention_strength <= 1.0):
+            errors.append(f"attention_strength must be between 0.0 and 1.0, got {config.attention_strength}")
+        
         # Log validation results
         if errors:
             for error in errors:
@@ -492,6 +512,13 @@ class ConfigLoader:
         new_config.add_section("DATA")
         excluded_ids_str = ",".join(config.excluded_file_ids) if config.excluded_file_ids else ""
         new_config.set("DATA", "EXCLUDED_FILE_IDS", excluded_ids_str)
+        
+        # Add zones section
+        new_config.add_section("ZONES")
+        new_config.set("ZONES", "USE_SEGMENTATION_MASKING", str(config.use_segmentation_masking))
+        new_config.set("ZONES", "MASKING_STRATEGY", config.masking_strategy)
+        new_config.set("ZONES", "ATTENTION_STRENGTH", str(config.attention_strength))
+        new_config.set("ZONES", "MASKS_PATH", config.masks_path)
         
         # Add environment section with resolved paths
         new_config.add_section("ENVIRONMENT")
