@@ -87,6 +87,9 @@ class Config:
     labels_csv: str = "Labeled_Data_RAW.csv"
     labels_csv_separator: str = ";"
     
+    # Data Filtering
+    excluded_file_ids: List[str] = field(default_factory=list)
+    
     # Training Hyperparameters
     batch_size: int = 32
     n_epochs: int = 100
@@ -233,6 +236,24 @@ class ConfigLoader:
             logger.warning(f"Configuration file not found: {self.ini_path}")
             return {}
     
+    def parse_comma_separated_list(self, value: str) -> List[str]:
+        """
+        Parse comma-separated string into list of strings.
+        
+        Args:
+            value: Comma-separated string
+            
+        Returns:
+            List of trimmed strings (empty list if value is empty)
+        """
+        if not value or not value.strip():
+            return []
+        
+        # Split by comma and strip whitespace from each item
+        items = [item.strip() for item in value.split(',')]
+        # Filter out empty strings
+        return [item for item in items if item]
+    
     def convert_type(self, value: Any, target_type: type) -> Any:
         """
         Convert value to target type with proper handling of string representations.
@@ -355,6 +376,11 @@ class ConfigLoader:
             labels_csv=self.get_config_value("LABELS_CSV", "Labeled_Data_RAW.csv", str),
             labels_csv_separator=self.get_config_value("LABELS_CSV_SEPARATOR", ";", str),
             
+            # Data Filtering
+            excluded_file_ids=self.parse_comma_separated_list(
+                self.get_config_value("EXCLUDED_FILE_IDS", "", str)
+            ),
+            
             # Training Hyperparameters
             batch_size=self.get_config_value("BATCH_SIZE", 32, int),
             n_epochs=self.get_config_value("N_EPOCHS", 100, int),
@@ -461,6 +487,11 @@ class ConfigLoader:
         # Add model section
         new_config.add_section("MODEL")
         new_config.set("MODEL", "MODEL_ARCH", config.model_arch)
+        
+        # Add data section
+        new_config.add_section("DATA")
+        excluded_ids_str = ",".join(config.excluded_file_ids) if config.excluded_file_ids else ""
+        new_config.set("DATA", "EXCLUDED_FILE_IDS", excluded_ids_str)
         
         # Add environment section with resolved paths
         new_config.add_section("ENVIRONMENT")

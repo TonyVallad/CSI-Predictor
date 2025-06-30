@@ -121,6 +121,21 @@ def load_csv_data(csv_path: str) -> pd.DataFrame:
         if missing_cols:
             raise ValueError(f"Missing required columns in CSV: {missing_cols}")
         
+        # Apply FileID exclusion filter
+        if cfg.excluded_file_ids:
+            initial_count = len(df)
+            # Convert FileID to string for comparison (handles both string and numeric FileIDs)
+            df = df[~df['FileID'].astype(str).isin(cfg.excluded_file_ids)]
+            excluded_count = initial_count - len(df)
+            if excluded_count > 0:
+                print(f"Excluded {excluded_count} FileIDs based on exclusion filter")
+                print(f"Excluded FileIDs: {', '.join(cfg.excluded_file_ids)}")
+                print(f"Remaining samples: {len(df)}")
+            else:
+                print(f"No FileIDs were excluded (none found in dataset)")
+        else:
+            print("No FileID exclusion filter configured")
+        
         return df
         
     except Exception as e:

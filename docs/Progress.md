@@ -8,6 +8,10 @@
 - Reduced crop margin from 180 to 50 px. (now can be set at the beginning of the notebook)
 - Fixed crop not working correctly. (Overlay cyan rectangle, crop on masks, final image crop)
 
+## 2025-06-30
+- Added FileID filter functionality.
+- Fixed ROC curves. (overall)
+
 ## Todo
 - Fix ROC curve. (overall)
 - Fix pixel value.
