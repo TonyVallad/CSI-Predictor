@@ -1004,33 +1004,70 @@ def create_roc_curves(
         
         plt.figure(figsize=(12, 9))
         
-        # Collect all zone AUCs per class for macro-averaging
+        # Collect all zone ROC data per class for proper macro-averaging
         overall_metrics = {}
         valid_class_names = [class_names[i] for i in range(len(class_names)) if i != ignore_class]
         
         for class_name in valid_class_names:
             class_aucs = []
-            for zone_data in roc_metrics.values():
-                if class_name in zone_data:
-                    class_aucs.append(zone_data[class_name]['auc'])
+            all_fpr = []
+            all_tpr = []
             
-            if class_aucs:
+            # Collect FPR/TPR data from all zones for this class
+            for zone_data in roc_metrics.values():
+                if class_name in zone_data and 'fpr' in zone_data[class_name]:
+                    class_aucs.append(zone_data[class_name]['auc'])
+                    all_fpr.append(zone_data[class_name]['fpr'])
+                    all_tpr.append(zone_data[class_name]['tpr'])
+            
+            if class_aucs and all_fpr:
                 mean_auc = np.mean(class_aucs)
-                overall_metrics[class_name] = {
-                    'mean_auc': mean_auc,
-                    'zone_aucs': class_aucs
-                }
                 
-                # Plot average line (simplified representation)
-                class_idx = class_names.index(class_name)
-                color = colors[class_idx % len(colors)]
+                # Create proper macro-averaged ROC curve
+                # Use common FPR points for interpolation
+                common_fpr = np.linspace(0, 1, 100)
+                interpolated_tprs = []
                 
-                # Create a representative ROC curve for visualization
-                mean_fpr = np.linspace(0, 1, 100)
-                mean_tpr = mean_fpr * mean_auc + (1 - mean_auc) * mean_fpr**2  # Simplified curve
+                # Interpolate each zone's TPR to common FPR points
+                for fpr, tpr in zip(all_fpr, all_tpr):
+                    # Ensure fpr is sorted and handle edge cases
+                    if len(fpr) > 1 and len(tpr) > 1:
+                        # Add points at (0,0) and (1,1) if not present
+                        if fpr[0] > 0:
+                            fpr = np.concatenate([[0], fpr])
+                            tpr = np.concatenate([[0], tpr])
+                        if fpr[-1] < 1:
+                            fpr = np.concatenate([fpr, [1]])
+                            tpr = np.concatenate([tpr, [1]])
+                        
+                        # Interpolate TPR values at common FPR points
+                        interp_tpr = np.interp(common_fpr, fpr, tpr)
+                        interpolated_tprs.append(interp_tpr)
                 
-                plt.plot(mean_fpr, mean_tpr, color=color, lw=3, alpha=0.8,
-                        label=f'{class_name} (Mean AUC = {mean_auc:.3f})')
+                if interpolated_tprs:
+                    # Compute macro-averaged TPR
+                    mean_tpr = np.mean(interpolated_tprs, axis=0)
+                    
+                    # Store comprehensive metrics
+                    overall_metrics[class_name] = {
+                        'mean_auc': mean_auc,
+                        'zone_aucs': class_aucs,
+                        'mean_fpr': common_fpr,
+                        'mean_tpr': mean_tpr
+                    }
+                    
+                    # Plot the properly averaged ROC curve
+                    class_idx = class_names.index(class_name)
+                    color = colors[class_idx % len(colors)]
+                    
+                    plt.plot(common_fpr, mean_tpr, color=color, lw=3, alpha=0.8,
+                            label=f'{class_name} (Mean AUC = {mean_auc:.3f})')
+                else:
+                    # Fallback for edge cases
+                    overall_metrics[class_name] = {
+                        'mean_auc': mean_auc,
+                        'zone_aucs': class_aucs
+                    }
         
         # Plot diagonal
         plt.plot([0, 1], [0, 1], 'k--', lw=2, alpha=0.5, label='Random Classifier')
@@ -1209,35 +1246,76 @@ def create_precision_recall_curves(
         
         plt.figure(figsize=(12, 9))
         
-        # Collect all zone APs per class for macro-averaging
+        # Collect all zone PR data per class for proper macro-averaging
         overall_metrics = {}
         valid_class_names = [class_names[i] for i in range(len(class_names)) if i != ignore_class]
         
         for class_name in valid_class_names:
             class_aps = []
-            for zone_data in pr_metrics.values():
-                if class_name in zone_data:
-                    class_aps.append(zone_data[class_name]['average_precision'])
+            all_precision = []
+            all_recall = []
             
-            if class_aps:
+            # Collect precision/recall data from all zones for this class
+            for zone_data in pr_metrics.values():
+                if class_name in zone_data and 'precision' in zone_data[class_name]:
+                    class_aps.append(zone_data[class_name]['average_precision'])
+                    all_precision.append(zone_data[class_name]['precision'])
+                    all_recall.append(zone_data[class_name]['recall'])
+            
+            if class_aps and all_precision:
                 mean_ap = np.mean(class_aps)
-                overall_metrics[class_name] = {
-                    'mean_ap': mean_ap,
-                    'zone_aps': class_aps
-                }
                 
-                # Plot average line (simplified representation)
-                class_idx = class_names.index(class_name)
-                color = colors[class_idx % len(colors)]
+                # Create proper macro-averaged PR curve
+                # Use common recall points for interpolation
+                common_recall = np.linspace(0, 1, 100)
+                interpolated_precisions = []
                 
-                # Create a representative PR curve for visualization
-                mean_recall = np.linspace(0, 1, 100)
-                # Simple approximation: higher AP = higher precision across recall values
-                mean_precision = np.ones_like(mean_recall) * mean_ap
-                mean_precision = np.maximum(mean_precision, mean_recall * mean_ap)  # Ensure reasonable shape
+                # Interpolate each zone's precision to common recall points
+                for precision, recall in zip(all_precision, all_recall):
+                    # Ensure recall is sorted and handle edge cases
+                    if len(recall) > 1 and len(precision) > 1:
+                        # Sort by recall (PR curves can be unsorted)
+                        sorted_indices = np.argsort(recall)
+                        recall_sorted = recall[sorted_indices]
+                        precision_sorted = precision[sorted_indices]
+                        
+                        # Add points at (0,precision[0]) and (1,0) if not present
+                        if recall_sorted[0] > 0:
+                            recall_sorted = np.concatenate([[0], recall_sorted])
+                            precision_sorted = np.concatenate([[precision_sorted[0]], precision_sorted])
+                        if recall_sorted[-1] < 1:
+                            recall_sorted = np.concatenate([recall_sorted, [1]])
+                            precision_sorted = np.concatenate([precision_sorted, [0]])
+                        
+                        # Interpolate precision values at common recall points
+                        # Use 'previous' method for PR curves (step-like interpolation)
+                        interp_precision = np.interp(common_recall, recall_sorted, precision_sorted)
+                        interpolated_precisions.append(interp_precision)
                 
-                plt.plot(mean_recall, mean_precision, color=color, lw=3, alpha=0.8,
-                        label=f'{class_name} (Mean AP = {mean_ap:.3f})')
+                if interpolated_precisions:
+                    # Compute macro-averaged precision
+                    mean_precision = np.mean(interpolated_precisions, axis=0)
+                    
+                    # Store comprehensive metrics
+                    overall_metrics[class_name] = {
+                        'mean_ap': mean_ap,
+                        'zone_aps': class_aps,
+                        'mean_recall': common_recall,
+                        'mean_precision': mean_precision
+                    }
+                    
+                    # Plot the properly averaged PR curve
+                    class_idx = class_names.index(class_name)
+                    color = colors[class_idx % len(colors)]
+                    
+                    plt.plot(common_recall, mean_precision, color=color, lw=3, alpha=0.8,
+                            label=f'{class_name} (Mean AP = {mean_ap:.3f})')
+                else:
+                    # Fallback for edge cases
+                    overall_metrics[class_name] = {
+                        'mean_ap': mean_ap,
+                        'zone_aps': class_aps
+                    }
         
         # Overall macro-average
         if overall_metrics:
@@ -2059,9 +2137,14 @@ def create_summary_dashboard(
                 auc_score = class_data['mean_auc']
                 auc_scores.append(auc_score)
                 
-                # Create a representative ROC curve for visualization
-                fpr = np.linspace(0, 1, 100)
-                tpr = fpr * auc_score + (1 - auc_score) * fpr**2  # Simplified curve
+                # Use actual averaged ROC curve if available, otherwise fallback
+                if 'mean_fpr' in class_data and 'mean_tpr' in class_data:
+                    fpr = class_data['mean_fpr']
+                    tpr = class_data['mean_tpr']
+                else:
+                    # Fallback to simplified curve if actual data not available
+                    fpr = np.linspace(0, 1, 100)
+                    tpr = fpr * auc_score + (1 - auc_score) * fpr**2
                 
                 axes[1, 2].plot(fpr, tpr, color=color, lw=2,
                                label=f'{class_name} (AUC = {auc_score:.3f})')
