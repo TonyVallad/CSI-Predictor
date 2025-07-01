@@ -100,6 +100,7 @@ class Config:
     # Model Configuration
     model_arch: str = "resnet50"
     use_official_processor: bool = False  # Whether to use official RadDINO processor
+    zone_focus_method: str = "masking"  # "masking" or "spatial_reduction"
     
     # Zone Masking Configuration
     use_segmentation_masking: bool = True
@@ -397,6 +398,7 @@ class ConfigLoader:
             # Model Configuration
             model_arch=self.get_config_value("MODEL_ARCH", "resnet50", str),
             use_official_processor=self.get_config_value("USE_OFFICIAL_PROCESSOR", False, bool),
+            zone_focus_method=self.get_config_value("ZONE_FOCUS_METHOD", "masking", str),
             
             # Zone Masking Configuration
             use_segmentation_masking=self.get_config_value("USE_SEGMENTATION_MASKING", True, bool),
@@ -458,6 +460,11 @@ class ConfigLoader:
         if config.optimizer.lower() not in valid_optimizers:
             errors.append(f"optimizer must be one of {valid_optimizers}, got {config.optimizer}")
         
+        # Validate zone focus method
+        valid_zone_focus_methods = ["masking", "spatial_reduction"]
+        if config.zone_focus_method.lower() not in valid_zone_focus_methods:
+            errors.append(f"zone_focus_method must be one of {valid_zone_focus_methods}, got {config.zone_focus_method}")
+        
         # Validate zone masking configuration
         valid_masking_strategies = ["zero", "attention"]
         if config.masking_strategy.lower() not in valid_masking_strategies:
@@ -507,6 +514,8 @@ class ConfigLoader:
         # Add model section
         new_config.add_section("MODEL")
         new_config.set("MODEL", "MODEL_ARCH", config.model_arch)
+        new_config.set("MODEL", "USE_OFFICIAL_PROCESSOR", str(config.use_official_processor))
+        new_config.set("MODEL", "ZONE_FOCUS_METHOD", config.zone_focus_method)
         
         # Add data section
         new_config.add_section("DATA")

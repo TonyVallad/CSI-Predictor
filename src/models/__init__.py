@@ -66,10 +66,17 @@ class CSIModel(nn.Module):
 
 class CSIModelWithZoneMasking(nn.Module):
     """
-    CSI prediction model with zone masking support.
+    CSI prediction model with zone focus support.
     
-    Supports both grid-based zones and segmentation-guided zones with
-    configurable masking strategies (zero masking or attention masking).
+    Supports two zone focus methods:
+    1. Masking: Creates 6 masked versions of each image, processes separately
+       - Grid-based zones and optional segmentation-guided zones
+       - Configurable masking strategies (zero masking or attention masking)
+       - Memory: High (6x images), Accuracy: High
+       
+    2. Spatial Reduction: Single image processing + adaptive pooling to 3x2 grid
+       - Processes one image, spatially pools to 6 zone features
+       - Memory: Low (1x images), Accuracy: Good, Speed: Faster
     """
     
     # Zone mapping: left lung = right side of image (anatomically correct)
@@ -84,10 +91,10 @@ class CSIModelWithZoneMasking(nn.Module):
     
     def __init__(self, cfg, backbone_arch: str, n_classes_per_zone: int = 5, pretrained: bool = True):
         """
-        Initialize CSI model with zone masking.
+        Initialize CSI model with zone focus.
         
         Args:
-            cfg: Configuration object with zone masking settings
+            cfg: Configuration object with zone focus settings
             backbone_arch: Backbone architecture name
             n_classes_per_zone: Number of classes per zone (default: 5)
             pretrained: Use pretrained backbone
@@ -96,6 +103,7 @@ class CSIModelWithZoneMasking(nn.Module):
         
         # Store configuration
         self.cfg = cfg
+        self.zone_focus_method = cfg.zone_focus_method.lower()
         self.use_segmentation_masking = cfg.use_segmentation_masking
         self.masking_strategy = cfg.masking_strategy.lower()
         self.attention_strength = cfg.attention_strength
@@ -104,17 +112,37 @@ class CSIModelWithZoneMasking(nn.Module):
         # Create base model
         self.backbone = get_backbone(backbone_arch, pretrained)
         backbone_out_dim = get_backbone_feature_dim(backbone_arch)
-        self.head = CSIHead(backbone_out_dim, n_classes_per_zone)
+        
+        # Create zone-specific components based on focus method
+        if self.zone_focus_method == "spatial_reduction":
+            # For spatial reduction, we use zone-specific feature transformations
+            # Each zone gets its own feature transformation + classifier
+            self.zone_feature_transforms = nn.ModuleList([
+                nn.Sequential(
+                    nn.Linear(backbone_out_dim, backbone_out_dim // 2),
+                    nn.ReLU(),
+                    nn.Dropout(0.1),
+                    nn.Linear(backbone_out_dim // 2, backbone_out_dim // 4)
+                ) for _ in range(6)
+            ])
+            self.zone_classifiers = nn.ModuleList([
+                nn.Linear(backbone_out_dim // 4, n_classes_per_zone) for _ in range(6)
+            ])
+        else:
+            # For masking approach, use the standard head
+            self.head = CSIHead(backbone_out_dim, n_classes_per_zone)
         
         # Store metadata
         self.backbone_arch = backbone_arch
         self.n_classes_per_zone = n_classes_per_zone
         self.pretrained = pretrained
         
-        logger.info(f"Created CSI model with zone masking:")
-        logger.info(f"  - Segmentation masking: {self.use_segmentation_masking}")
-        logger.info(f"  - Masking strategy: {self.masking_strategy}")
-        logger.info(f"  - Attention strength: {self.attention_strength}")
+        logger.info(f"Created CSI model with zone focus:")
+        logger.info(f"  - Zone focus method: {self.zone_focus_method}")
+        if self.zone_focus_method == "masking":
+            logger.info(f"  - Segmentation masking: {self.use_segmentation_masking}")
+            logger.info(f"  - Masking strategy: {self.masking_strategy}")
+            logger.info(f"  - Attention strength: {self.attention_strength}")
     
     def create_grid_zone_mask(self, batch_size: int, height: int, width: int, zone_idx: int, device: torch.device) -> torch.Tensor:
         """
@@ -279,7 +307,7 @@ class CSIModelWithZoneMasking(nn.Module):
     
     def forward(self, x: torch.Tensor, file_ids: Optional[list] = None) -> torch.Tensor:
         """
-        Forward pass with zone masking.
+        Forward pass with zone focus.
         
         Args:
             x: Input images [batch_size, channels, height, width]
@@ -290,62 +318,84 @@ class CSIModelWithZoneMasking(nn.Module):
         """
         batch_size = x.shape[0]
         
-        # Create zone masks for all zones
-        zone_masks = []
-        for zone_idx in range(6):
-            zone_mask = self.create_zone_mask(x, zone_idx, file_ids)
-            zone_masks.append(zone_mask)
+        if self.zone_focus_method == "spatial_reduction":
+            # Spatial reduction approach: single image processing + zone-specific transformations
+            
+            # Single forward pass through backbone
+            features = self.backbone(x)  # [batch_size, feature_dim]
+            
+            # Apply zone-specific feature transformations and classification
+            zone_predictions = []
+            for zone_idx in range(6):
+                # Transform features for this specific zone
+                zone_features = self.zone_feature_transforms[zone_idx](features)  # [batch_size, feature_dim//4]
+                
+                # Classify the zone-specific features
+                zone_logits = self.zone_classifiers[zone_idx](zone_features)
+                zone_predictions.append(zone_logits)
+            
+            # Stack predictions: [batch_size, n_zones, n_classes_per_zone]
+            return torch.stack(zone_predictions, dim=1)
         
-        # Stack zone masks: [6, batch_size, 1, height, width]
-        all_zone_masks = torch.stack(zone_masks, dim=0)
-        
-        # Apply zone masking to create zone-specific inputs
-        zone_inputs = []
-        for zone_idx in range(6):
-            masked_input = self.apply_zone_masking(x, all_zone_masks[zone_idx])
-            zone_inputs.append(masked_input)
-        
-        # Stack all zone inputs: [6 * batch_size, channels, height, width]
-        stacked_inputs = torch.cat(zone_inputs, dim=0)
-        
-        # Single backbone forward pass for all zones
-        all_features = self.backbone(stacked_inputs)
-        
-        # Reshape features back to [6, batch_size, feature_dim]
-        feature_dim = all_features.shape[-1]
-        zone_features = all_features.view(6, batch_size, feature_dim)
-        
-        # Process each zone through its respective head
-        zone_predictions = []
-        for zone_idx in range(6):
-            zone_feat = zone_features[zone_idx]  # [batch_size, feature_dim]
-            zone_logits = self.head.zone_classifiers[zone_idx](zone_feat)
-            zone_predictions.append(zone_logits)
-        
-        # Stack predictions: [batch_size, n_zones, n_classes_per_zone]
-        return torch.stack(zone_predictions, dim=1)
+        else:
+            # Masking approach: create 6 masked versions and process separately
+            
+            # Create zone masks for all zones
+            zone_masks = []
+            for zone_idx in range(6):
+                zone_mask = self.create_zone_mask(x, zone_idx, file_ids)
+                zone_masks.append(zone_mask)
+            
+            # Stack zone masks: [6, batch_size, 1, height, width]
+            all_zone_masks = torch.stack(zone_masks, dim=0)
+            
+            # Apply zone masking to create zone-specific inputs
+            zone_inputs = []
+            for zone_idx in range(6):
+                masked_input = self.apply_zone_masking(x, all_zone_masks[zone_idx])
+                zone_inputs.append(masked_input)
+            
+            # Stack all zone inputs: [6 * batch_size, channels, height, width]
+            stacked_inputs = torch.cat(zone_inputs, dim=0)
+            
+            # Single backbone forward pass for all zones
+            all_features = self.backbone(stacked_inputs)
+            
+            # Reshape features back to [6, batch_size, feature_dim]
+            feature_dim = all_features.shape[-1]
+            zone_features = all_features.view(6, batch_size, feature_dim)
+            
+            # Process each zone through its respective head
+            zone_predictions = []
+            for zone_idx in range(6):
+                zone_feat = zone_features[zone_idx]  # [batch_size, feature_dim]
+                zone_logits = self.head.zone_classifiers[zone_idx](zone_feat)
+                zone_predictions.append(zone_logits)
+            
+            # Stack predictions: [batch_size, n_zones, n_classes_per_zone]
+            return torch.stack(zone_predictions, dim=1)
 
 
-def build_model(cfg, use_zone_masking: bool = None) -> nn.Module:
+def build_model(cfg, use_zone_focus: bool = None) -> nn.Module:
     """
     Build CSI model from configuration and move to device.
     
     Args:
         cfg: Configuration object with model settings
-        use_zone_masking: Whether to use zone masking model (auto-detected if None)
+        use_zone_focus: Whether to use zone focus model (auto-detected if None)
         
     Returns:
         CSI model on the specified device
     """
     logger.info(f"Building CSI model with architecture: {cfg.model_arch}")
     
-    # Auto-detect zone masking if not specified
-    if use_zone_masking is None:
-        use_zone_masking = hasattr(cfg, 'use_segmentation_masking') or hasattr(cfg, 'masking_strategy')
+    # Auto-detect zone focus if not specified
+    if use_zone_focus is None:
+        use_zone_focus = hasattr(cfg, 'zone_focus_method') or hasattr(cfg, 'use_segmentation_masking') or hasattr(cfg, 'masking_strategy')
     
     # Create appropriate model
-    if use_zone_masking:
-        logger.info("Creating CSI model with zone masking support")
+    if use_zone_focus:
+        logger.info("Creating CSI model with zone focus support")
         model = CSIModelWithZoneMasking(
             cfg=cfg,
             backbone_arch=cfg.model_arch,
@@ -370,7 +420,9 @@ def build_model(cfg, use_zone_masking: bool = None) -> nn.Module:
     
     logger.info(f"Model created successfully:")
     logger.info(f"  - Backbone: {cfg.model_arch}")
-    logger.info(f"  - Zone masking: {use_zone_masking}")
+    logger.info(f"  - Zone focus: {use_zone_focus}")
+    if use_zone_focus and hasattr(cfg, 'zone_focus_method'):
+        logger.info(f"  - Zone focus method: {cfg.zone_focus_method}")
     logger.info(f"  - Total parameters: {total_params:,}")
     logger.info(f"  - Trainable parameters: {trainable_params:,}")
     logger.info(f"  - Device: {device}")
@@ -378,18 +430,31 @@ def build_model(cfg, use_zone_masking: bool = None) -> nn.Module:
     return model
 
 
+def build_zone_focus_model(cfg) -> CSIModelWithZoneMasking:
+    """
+    Build CSI model with zone focus explicitly.
+    
+    Args:
+        cfg: Configuration object with zone focus settings
+        
+    Returns:
+        CSI model with zone focus on the specified device
+    """
+    return build_model(cfg, use_zone_focus=True)
+
+
 def build_zone_masking_model(cfg) -> CSIModelWithZoneMasking:
     """
-    Build CSI model with zone masking explicitly.
+    Build CSI model with zone masking explicitly (legacy function).
     
     Args:
         cfg: Configuration object with zone masking settings
         
     Returns:
-        CSI model with zone masking on the specified device
+        CSI model with zone focus on the specified device
     """
-    return build_model(cfg, use_zone_masking=True)
+    return build_model(cfg, use_zone_focus=True)
 
 
 # Export main components
-__all__ = ['CSIModel', 'CSIModelWithZoneMasking', 'build_model', 'build_zone_masking_model'] 
+__all__ = ['CSIModel', 'CSIModelWithZoneMasking', 'build_model', 'build_zone_focus_model', 'build_zone_masking_model'] 
