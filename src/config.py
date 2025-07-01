@@ -284,6 +284,13 @@ class ConfigLoader:
         if value is None:
             return None
         
+        # Handle string inputs - strip inline comments
+        if isinstance(value, str):
+            value = value.strip()
+            # Strip inline comments (everything after #)
+            if '#' in value:
+                value = value.split('#')[0].strip()
+        
         if target_type == bool:
             if isinstance(value, bool):
                 return value
