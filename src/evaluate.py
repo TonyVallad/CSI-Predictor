@@ -27,17 +27,19 @@ from .utils import (
 )
 
 
-def load_trained_model(model_path: str, device: torch.device) -> CSIModel:
+def load_trained_model(model_path: str, device: torch.device):
     """
-    Load trained model from checkpoint.
+    Load trained model from checkpoint with automatic architecture detection.
     
     Args:
         model_path: Path to model checkpoint
         device: Device to load model on
         
     Returns:
-        Loaded model
+        Loaded CSI model (either CSIModel or CSIModelWithZoneMasking)
     """
+    from .models import build_model, CSIModel
+    
     checkpoint = torch.load(model_path, map_location=device)
     
     # Get model architecture from config
@@ -45,12 +47,26 @@ def load_trained_model(model_path: str, device: torch.device) -> CSIModel:
     if config is None:
         raise ValueError("Model checkpoint missing configuration information")
     
-    # Create model
-    model = CSIModel(
-        backbone_arch=config.model_arch,
-        n_classes_per_zone=5,  # Classification with 5 classes
-        pretrained=False  # Don't need pretrained weights when loading checkpoint
-    )
+    # Check state dict keys to detect model architecture
+    state_dict_keys = set(checkpoint['model_state_dict'].keys())
+    
+    # Detect if this is a zone focus model by checking for zone-specific components
+    has_zone_transforms = any('zone_feature_transforms' in key for key in state_dict_keys)
+    has_direct_zone_classifiers = any(key.startswith('zone_classifiers.') for key in state_dict_keys)
+    has_head_zone_classifiers = any('head.zone_classifiers' in key for key in state_dict_keys)
+    
+    if has_zone_transforms or has_direct_zone_classifiers or has_head_zone_classifiers:
+        # This is a zone focus model - use build_model with zone focus enabled
+        logger.info("Detected zone focus model architecture")
+        model = build_model(config, use_zone_focus=True)
+    else:
+        # This is a standard model
+        logger.info("Detected standard model architecture")
+        model = CSIModel(
+            backbone_arch=config.model_arch,
+            n_classes_per_zone=5,
+            pretrained=False
+        )
     
     # Load state dict
     model.load_state_dict(checkpoint['model_state_dict'])
