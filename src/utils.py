@@ -467,10 +467,13 @@ def show_batch(
             else:  # Inferior
                 y_start, y_end = 2*h//3, h
             
+            # FIXED: Correct anatomical orientation for chest X-rays
+            # Patient's RIGHT lung appears on LEFT side of image
+            # Patient's LEFT lung appears on RIGHT side of image
             if 'Right' in zone_name:
-                x_start, x_end = w//2, w
+                x_start, x_end = 0, w//2  # Patient's right lung = left side of image
             else:  # Left
-                x_start, x_end = 0, w//2
+                x_start, x_end = w//2, w  # Patient's left lung = right side of image
             
             # Add colored rectangle for the zone
             rect = patches.Rectangle(
