@@ -22,6 +22,7 @@ from .data import create_data_loaders
 from .models import build_model
 from .utils import EarlyStopping, MetricsTracker, logger, seed_everything, make_run_name, make_model_name, log_config, plot_training_curves, plot_training_curves_grid, create_summary_dashboard, save_training_history
 from .metrics import compute_pytorch_f1_metrics, compute_precision_recall_metrics, compute_enhanced_f1_metrics
+from .discord_notifier import send_training_notification
 
 
 def set_random_seeds(seed: int = 42) -> None:
@@ -573,6 +574,33 @@ def train_model(config) -> None:
             None,  # roc_curve_data - not available during training
             str(graphs_dir), run_name, epochs_list,
             evaluation_metrics=None  # No static evaluation metrics during training
+        )
+        
+        # 5. Send Discord notification with training results
+        logger.info("Sending Discord notification...")
+        dashboard_path = graphs_dir / f"{run_name}_summary_dashboard.png"
+        
+        # Prepare final metrics for Discord notification
+        final_train_metrics = {
+            'accuracy': train_accuracies[-1] if train_accuracies else 0,
+            'loss': train_losses[-1] if train_losses else 0,
+            'f1_macro': train_f1_scores[-1] if train_f1_scores else 0,
+            'precision_macro': train_precisions[-1] if train_precisions else 0
+        }
+        
+        final_val_metrics = {
+            'accuracy': val_accuracies[-1] if val_accuracies else 0,
+            'loss': best_val_loss,
+            'f1_macro': best_val_f1,
+            'precision_macro': val_precisions[-1] if val_precisions else 0
+        }
+        
+        send_training_notification(
+            config=config,
+            model_name=train_model_name,
+            dashboard_image_path=str(dashboard_path) if dashboard_path.exists() else None,
+            train_results=final_train_metrics,
+            val_results=final_val_metrics
         )
     
     if use_wandb:

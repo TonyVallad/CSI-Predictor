@@ -25,6 +25,7 @@ from .utils import (
     create_model_name_from_existing, create_overall_confusion_matrix, create_summary_dashboard,
     load_training_history
 )
+from .discord_notifier import send_evaluation_notification
 
 
 def load_trained_model(model_path: str, device: torch.device):
@@ -958,6 +959,18 @@ def evaluate_model(config) -> None:
         test_overall_cm, test_roc_metrics,
         str(graphs_dir), f"{eval_run_name}_test", epochs_list,
         evaluation_metrics=test_overall_metrics
+    )
+    
+    # Send Discord notification with evaluation results
+    logger.info("Sending Discord notification...")
+    dashboard_path = graphs_dir / f"{eval_run_name}_validation_summary_dashboard.png"
+    
+    send_evaluation_notification(
+        config=config,
+        model_name=eval_model_name,
+        dashboard_image_path=str(dashboard_path) if dashboard_path.exists() else None,
+        val_results=val_overall_metrics,
+        test_results=test_overall_metrics
     )
     
     # Log to WandB
