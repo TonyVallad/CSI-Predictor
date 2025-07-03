@@ -24,6 +24,10 @@
 - Histogram creation for every image for better pixel value analysis and better image preprocessing.
 - Experiment: Encoded pixel value over the 3 chanels (RGB) to get 3x pixel value resolution. (more details) (might not be compatible with pretrained models, testing required...)
 
+## 2025-07-03
+
+- Experiment: Created function to generate mask showing pixels with min or max value on the image.
+
 ## Todo
 
 - Fix pixel value.
