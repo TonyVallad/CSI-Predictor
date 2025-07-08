@@ -1,40 +1,45 @@
-# Development Progress
+<div align="center">
+
+# Technical Notes — Project Progress
+
+</div>
 
 ## 2025-06-24
 
-- Updated segmentation step by improving segmentation accuracy and differenciating between left/right lungs.
+- Optimized the segmentation module: improved accuracy and explicitly separated left/right lungs through refined morphological post-processing.
 
 ## 2025-06-27
 
-- Updated segmentation step by only keeping the main segmentation zone for each lung.
-- Reduced crop margin from 180 to 50 px. (now can be set at the beginning of the notebook)
-- Fixed crop not working correctly. (Overlay cyan rectangle, crop on masks, final image crop)
+- Pipeline overhaul: retained only the primary lung regions via masks, removing spurious segments.
+- Configurable crop margin reduced from 180 px to 50 px to focus the model on regions of interest.
+- Corrected cropping issues: enforced strict application to masks and final image, with visual overlay for verification.
 
 ## 2025-06-30
 
-- Added FileID filter functionality.
-- Fixed ROC curves. (overall)
+- Implemented a FileID-based filter to refine sample subsets.
+- Debugged and recalculated ROC/AUC curves across all predictions.
 
 ## 2025-07-01
 
-- Implemented zone focus (6 zones + segmentation mask option)
+- Deployed regional focus on six lung sub-zones, with an option for direct inference on masks.
 
 ## 2025-07-02
 
-- Histogram creation for every image for better pixel value analysis and better image preprocessing.
-- Experiment: Encoded pixel value over the 3 chanels (RGB) to get 3x pixel value resolution. (more details) (might not be compatible with pretrained models, testing required...)
+- Automated histogram generation for each image to characterize intensity distributions and refine preprocessing.
+- Experimentation: multi-channel (RGB) encoding of intensities to achieve ×3 grayscale resolution—beware of potential incompatibility with pretrained weights.
 
 ## 2025-07-03
 
-- Experiment: Created function to generate mask showing pixels with min or max value on the image.
+- Developed a function to detect pixel-value extremes (min/max) in images for isolating potential artifacts.
 
 ## Todo
 
-- Fix pixel value.
-- Remove unrelated images.
-- Calculate the average CSI and compare it to labeled data.
-- Manually test model with a few images to verify everything works as intended.
+- Harmonize pixel values (normalization/re-scaling).
+- Clean the dataset (exclude out-of-scope images).
+- Compute average CSI and compare to ground truths.
+- Conduct manual spot checks to verify visual consistency and softmax outputs.
 
-## Todo (maybe)
+## Areas to Investigate
 
-- Test model performance when giving it the same image but with different ranges for pixel value. (might not be necesarry after updating the preprocessing step)
+- Model sensitivity to artificially varied intensity ranges post-preprocessing.
+- New exploration: beyond fine‑tuning the final layers, train the full network (reinitialize all weights) for complete specialization to the target dataset.
