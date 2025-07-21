@@ -34,10 +34,12 @@
 
 ## Todo
 
+- Switch from using PNGs to NIFTIs. (with original dynamic range if possible)
 - Harmonize pixel values (normalization/re-scaling).
 - Clean the dataset (exclude out-of-scope images).
 - Compute average CSI and compare to ground truths.
 - Conduct manual spot checks to verify visual consistency and softmax outputs.
+- Front-end: To launch trainings, see results... (ask Julien if it's worth it)
 
 ## Areas to Investigate
 
