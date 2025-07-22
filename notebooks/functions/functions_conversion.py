@@ -9,7 +9,7 @@ import numpy as np
 import nibabel as nib
 from PIL import Image
 from pathlib import Path
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, Dict, Any
 import warnings
 
 
