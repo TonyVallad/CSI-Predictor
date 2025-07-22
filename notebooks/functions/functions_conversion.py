@@ -310,8 +310,18 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
     Returns:
         bool: True if successful, False otherwise
     """
+    # Debug: Print conversion details
+    print(f"🔄 convert_dicom_to_format called:")
+    print(f"   DICOM: {os.path.basename(dicom_path)}")
+    print(f"   Output: {os.path.basename(output_path)}")
+    print(f"   Format: '{output_format}' (lower: '{output_format.lower()}')")
+    print(f"   Target size: {target_size}")
+    print(f"   Has processed array: {processed_image_array is not None}")
+    print(f"   Has processing info: {processing_info is not None}")
+    
     # For NIFTI format, we need to preserve original DICOM values
     if output_format.lower() == 'nifti':
+        print(f"🎯 Entering NIFTI conversion path...")
         # Always read original DICOM data for NIFTI to preserve value range
         original_image_array, dicom_data, status = read_dicom_file(dicom_path)
         if original_image_array is None:
