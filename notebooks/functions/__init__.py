@@ -23,6 +23,7 @@ __all__ = [
     'convert_dicom_to_format',
     'get_output_path',
     'validate_dicom_file',
+    'apply_geometric_transforms_preserve_values',
     
     # Pre-processing functions
     'initialize_segmentation_model',
@@ -31,6 +32,7 @@ __all__ = [
     'segment_lungs_separate',
     'calculate_crop_bounds',
     'process_image_with_segmentation',
+    'apply_segmentation_transforms_to_original',
     
     # Visualization functions
     'create_separate_lung_overlay',

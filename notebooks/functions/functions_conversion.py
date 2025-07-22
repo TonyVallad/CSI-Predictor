@@ -163,7 +163,7 @@ def save_as_png(image_array: np.ndarray, output_path: str) -> bool:
 
 def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optional[pydicom.Dataset] = None) -> bool:
     """
-    Save image array as NIFTI file with optional DICOM metadata preservation.
+    Save image array as NIFTI file with proper orientation and DICOM metadata preservation.
     
     Args:
         image_array (np.ndarray): Image array to save
@@ -177,20 +177,29 @@ def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optiona
         # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
+        # Fix orientation: Rotate 90 degrees counterclockwise to match NIFTI convention
+        # This corrects the 90-degree rotation issue
+        image_array_corrected = np.rot90(image_array, k=1)  # k=1 means 90 degrees counterclockwise
+        
         # Ensure 3D array for NIFTI (add singleton dimension if 2D)
-        if image_array.ndim == 2:
-            image_array = image_array[:, :, np.newaxis]
+        if image_array_corrected.ndim == 2:
+            image_array_corrected = image_array_corrected[:, :, np.newaxis]
         
-        # Create basic affine matrix
+        # Create affine matrix with proper orientation for medical images
+        # Standard radiological orientation: RAS (Right-Anterior-Superior)
         affine = np.eye(4)
+        affine[0, 0] = -1.0  # Flip X for radiological convention
+        affine[1, 1] = -1.0  # Flip Y for radiological convention
+        affine[2, 2] = 1.0   # Keep Z positive
         
-        # Try to use DICOM metadata for better affine matrix
+        # Try to use DICOM metadata for better spacing and position
         if dicom_data is not None:
             try:
                 if hasattr(dicom_data, 'PixelSpacing'):
                     pixel_spacing = dicom_data.PixelSpacing
-                    affine[0, 0] = float(pixel_spacing[1])  # Column spacing (x)
-                    affine[1, 1] = float(pixel_spacing[0])  # Row spacing (y)
+                    # Apply spacing but maintain orientation flips
+                    affine[0, 0] = -float(pixel_spacing[1])  # Column spacing (x) with flip
+                    affine[1, 1] = -float(pixel_spacing[0])  # Row spacing (y) with flip
                 
                 if hasattr(dicom_data, 'SliceThickness'):
                     affine[2, 2] = float(dicom_data.SliceThickness)
@@ -205,8 +214,8 @@ def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optiona
             except Exception:
                 pass  # Use default affine if metadata parsing fails
         
-        # Create NIFTI image
-        nifti_img = nib.Nifti1Image(image_array, affine=affine)
+        # Create NIFTI image with corrected orientation
+        nifti_img = nib.Nifti1Image(image_array_corrected, affine=affine)
         
         # Save NIFTI file
         nib.save(nifti_img, output_path)
@@ -217,9 +226,51 @@ def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optiona
         return False
 
 
+def apply_geometric_transforms_preserve_values(original_array: np.ndarray, processed_array: np.ndarray, 
+                                             target_size: Optional[Tuple[int, int]] = None) -> np.ndarray:
+    """
+    Apply the same geometric transformations as processed_array to original_array while preserving values.
+    
+    Args:
+        original_array (np.ndarray): Original image with full value range
+        processed_array (np.ndarray): Processed image (normalized, cropped, etc.)
+        target_size (Optional[Tuple[int, int]]): Target size for final output
+    
+    Returns:
+        np.ndarray: Original array with same geometric transformations applied
+    """
+    try:
+        # Convert original to float32 to preserve precision
+        result = original_array.astype(np.float32)
+        
+        # If processed array has different dimensions, we need to figure out the transformation
+        orig_h, orig_w = original_array.shape[:2]
+        proc_h, proc_w = processed_array.shape[:2]
+        
+        # If dimensions changed, assume it was cropped and/or resized
+        if (orig_h, orig_w) != (proc_h, proc_w):
+            # For now, simply resize to match processed dimensions
+            # This is a simplified approach - in a full implementation, we'd need
+            # to track the exact crop bounds and apply them here
+            if target_size is not None:
+                result = resize_with_aspect_ratio(result, target_size)
+            else:
+                result = resize_with_aspect_ratio(result, (proc_w, proc_h))
+        elif target_size is not None:
+            # Same dimensions but target size specified
+            result = resize_with_aspect_ratio(result, target_size)
+        
+        return result
+        
+    except Exception as e:
+        print(f"Warning: Could not apply geometric transforms, using original array: {e}")
+        return original_array.astype(np.float32)
+
+
 def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: str, 
                           target_size: Optional[Tuple[int, int]] = None,
-                          processed_image_array: Optional[np.ndarray] = None) -> bool:
+                          processed_image_array: Optional[np.ndarray] = None,
+                          processing_info: Optional[Dict[str, Any]] = None) -> bool:
     """
     Convert DICOM file to specified format (PNG or NIFTI).
     
@@ -229,18 +280,50 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
         output_format (str): Output format ('png' or 'nifti')
         target_size (Optional[Tuple[int, int]]): Target size for resizing
         processed_image_array (Optional[np.ndarray]): Pre-processed image array
+        processing_info (Optional[Dict[str, Any]]): Processing metadata with transformation info
     
     Returns:
         bool: True if successful, False otherwise
     """
+    # For NIFTI format, we need to preserve original DICOM values
+    if output_format.lower() == 'nifti':
+        # Always read original DICOM data for NIFTI to preserve value range
+        original_image_array, dicom_data, status = read_dicom_file(dicom_path)
+        if original_image_array is None:
+            print(f"Failed to read DICOM: {status}")
+            return False
+        
+        # For NIFTI, use original values but apply the same geometric transformations
+        # if processed_image_array was provided (for segmentation-based cropping)
+        if processed_image_array is not None and processing_info is not None:
+            # Use the exact same transformations from segmentation processing
+            from functions_pre_processing import apply_segmentation_transforms_to_original
+            image_array = apply_segmentation_transforms_to_original(original_image_array, processing_info)
+            
+            # Apply final resizing if needed
+            if target_size is not None:
+                image_array = resize_with_aspect_ratio(image_array, target_size)
+                
+        elif processed_image_array is not None:
+            # Fall back to geometric transformation matching
+            image_array = apply_geometric_transforms_preserve_values(
+                original_image_array, processed_image_array, target_size
+            )
+        else:
+            # No processing was done, use original image
+            image_array = original_image_array.astype(np.float32)
+            
+            # Resize if requested
+            if target_size is not None:
+                image_array = resize_with_aspect_ratio(image_array, target_size)
+        
+        return save_as_nifti(image_array, output_path, dicom_data)
+    
+    # For PNG format, use the standard processing pipeline
     if processed_image_array is not None:
         # Use pre-processed image array
         image_array = processed_image_array
         dicom_data = None
-        
-        # Still need DICOM data for NIFTI metadata if possible
-        if output_format.lower() == 'nifti':
-            _, dicom_data, _ = read_dicom_file(dicom_path)
     else:
         # Read and process DICOM file
         image_array, dicom_data, status = read_dicom_file(dicom_path)
@@ -248,21 +331,16 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
             print(f"Failed to read DICOM: {status}")
             return False
         
-        # Normalize to uint8 for standard processing
+        # Normalize to uint8 for PNG processing
         image_array = normalize_image_array(image_array, 'uint8')
     
     # Resize if requested
     if target_size is not None:
         image_array = resize_with_aspect_ratio(image_array, target_size)
     
-    # Save in requested format
+    # Save as PNG
     if output_format.lower() == 'png':
         return save_as_png(image_array, output_path)
-    elif output_format.lower() == 'nifti':
-        # Convert to float32 for NIFTI (better for medical imaging)
-        if image_array.dtype != np.float32:
-            image_array = image_array.astype(np.float32)
-        return save_as_nifti(image_array, output_path, dicom_data)
     else:
         print(f"Unsupported output format: {output_format}")
         return False

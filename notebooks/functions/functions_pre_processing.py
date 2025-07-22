@@ -388,6 +388,36 @@ def calculate_crop_bounds(combined_mask: np.ndarray, image_shape: Tuple[int, int
     return y_min_crop, x_min_crop, y_max_crop, x_max_crop
 
 
+def apply_segmentation_transforms_to_original(original_array: np.ndarray, processing_info: Dict[str, Any]) -> np.ndarray:
+    """
+    Apply the same segmentation-based transformations to original DICOM values.
+    
+    Args:
+        original_array (np.ndarray): Original DICOM image with full value range
+        processing_info (Dict[str, Any]): Processing metadata with crop bounds
+    
+    Returns:
+        np.ndarray: Original array with same cropping applied
+    """
+    try:
+        if not processing_info.get('segmentation_success', False) or processing_info.get('crop_bounds') is None:
+            return original_array.astype(np.float32)
+        
+        crop_y_min, crop_x_min, crop_y_max, crop_x_max = processing_info['crop_bounds']
+        
+        # Apply the exact same crop to the original image
+        if len(original_array.shape) == 3:
+            cropped_original = original_array[crop_y_min:crop_y_max, crop_x_min:crop_x_max, :]
+        else:
+            cropped_original = original_array[crop_y_min:crop_y_max, crop_x_min:crop_x_max]
+        
+        return cropped_original.astype(np.float32)
+        
+    except Exception as e:
+        print(f"Warning: Could not apply segmentation transforms to original: {e}")
+        return original_array.astype(np.float32)
+
+
 def process_image_with_segmentation(image_array: np.ndarray, file_id: str, 
                                   config: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
