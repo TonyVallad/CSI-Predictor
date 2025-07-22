@@ -150,7 +150,7 @@ def resize_with_aspect_ratio_preserve_values(image_array: np.ndarray, target_siz
     original_min = image_array.min()
     original_max = image_array.max()
     
-    print(f"     Preserving values during resize: {original_min:.1f} to {original_max:.1f}, dtype: {original_dtype}")
+
     
     # Get current dimensions
     if len(image_array.shape) == 2:
@@ -186,7 +186,7 @@ def resize_with_aspect_ratio_preserve_values(image_array: np.ndarray, target_siz
     else:
         cropped = image_array[top:bottom, left:right, :]
     
-    print(f"     After crop: {cropped.shape}, range: {cropped.min():.1f} to {cropped.max():.1f}")
+
     
     # Resize using cv2 to preserve float values
     if len(cropped.shape) == 2:
@@ -197,7 +197,7 @@ def resize_with_aspect_ratio_preserve_values(image_array: np.ndarray, target_siz
     # Ensure we preserve the original data type
     resized = resized.astype(original_dtype)
     
-    print(f"     After resize: {resized.shape}, range: {resized.min():.1f} to {resized.max():.1f}, dtype: {resized.dtype}")
+
     
     return resized
 
@@ -244,7 +244,7 @@ def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optiona
         bool: True if successful, False otherwise
     """
     try:
-        print(f"🔄 Saving NIFTI: {os.path.basename(output_path)}")
+
         
         # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -295,10 +295,10 @@ def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optiona
         # Verify the file was created
         if os.path.exists(output_path):
             file_size = os.path.getsize(output_path)
-            print(f"   ✅ NIFTI saved: {file_size} bytes")
+
             return True
         else:
-            print(f"   ❌ File was not created")
+
             return False
         
     except Exception as e:
@@ -334,14 +334,14 @@ def apply_geometric_transforms_preserve_values(original_array: np.ndarray, proce
             # For now, simply resize to match processed dimensions
             # This is a simplified approach - in a full implementation, we'd need
             # to track the exact crop bounds and apply them here
-            print(f"     Dimension change detected: {orig_w}x{orig_h} → {proc_w}x{proc_h}")
+
             if target_size is not None:
                 result = resize_with_aspect_ratio_preserve_values(result, target_size)
             else:
                 result = resize_with_aspect_ratio_preserve_values(result, (proc_w, proc_h))
         elif target_size is not None:
             # Same dimensions but target size specified
-            print(f"     Same dimensions, resizing to target: {target_size}")
+
             result = resize_with_aspect_ratio_preserve_values(result, target_size)
         
         return result
