@@ -132,6 +132,76 @@ def resize_with_aspect_ratio(image_array: np.ndarray, target_size: Tuple[int, in
     return np.array(pil_image)
 
 
+def resize_with_aspect_ratio_preserve_values(image_array: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
+    """
+    Resize image while maintaining aspect ratio and preserving original value range (for NIFTI).
+    
+    Args:
+        image_array (np.ndarray): Input image array (float32 with original values)
+        target_size (Tuple[int, int]): Target size (width, height)
+    
+    Returns:
+        np.ndarray: Resized image array with preserved values
+    """
+    import cv2
+    
+    # Store original dtype and value range
+    original_dtype = image_array.dtype
+    original_min = image_array.min()
+    original_max = image_array.max()
+    
+    print(f"     Preserving values during resize: {original_min:.1f} to {original_max:.1f}, dtype: {original_dtype}")
+    
+    # Get current dimensions
+    if len(image_array.shape) == 2:
+        current_height, current_width = image_array.shape
+    else:
+        current_height, current_width = image_array.shape[:2]
+    
+    target_width, target_height = target_size
+    current_ratio = current_width / current_height
+    target_ratio = target_width / target_height
+    
+    # Calculate crop dimensions to maintain aspect ratio
+    if current_ratio > target_ratio:
+        # Image is wider, crop width
+        new_width = int(current_height * target_ratio)
+        new_height = current_height
+        left = (current_width - new_width) // 2
+        top = 0
+        right = left + new_width
+        bottom = current_height
+    else:
+        # Image is taller, crop height
+        new_width = current_width
+        new_height = int(current_width / target_ratio)
+        left = 0
+        top = (current_height - new_height) // 2
+        right = current_width
+        bottom = top + new_height
+    
+    # Crop first
+    if len(image_array.shape) == 2:
+        cropped = image_array[top:bottom, left:right]
+    else:
+        cropped = image_array[top:bottom, left:right, :]
+    
+    print(f"     After crop: {cropped.shape}, range: {cropped.min():.1f} to {cropped.max():.1f}")
+    
+    # Resize using cv2 to preserve float values
+    if len(cropped.shape) == 2:
+        resized = cv2.resize(cropped, target_size, interpolation=cv2.INTER_LANCZOS4)
+    else:
+        resized = cv2.resize(cropped, target_size, interpolation=cv2.INTER_LANCZOS4)
+    
+    # Ensure we preserve the original data type
+    resized = resized.astype(original_dtype)
+    
+    print(f"     After resize: {resized.shape}, range: {resized.min():.1f} to {resized.max():.1f}, dtype: {resized.dtype}")
+    
+    return resized
+
+
 def save_as_png(image_array: np.ndarray, output_path: str) -> bool:
     """
     Save image array as PNG file.
@@ -174,23 +244,18 @@ def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optiona
         bool: True if successful, False otherwise
     """
     try:
-        print(f"🔄 Starting NIFTI save process for {os.path.basename(output_path)}")
-        print(f"   Input array shape: {image_array.shape}, dtype: {image_array.dtype}")
-        print(f"   Value range: {image_array.min():.2f} to {image_array.max():.2f}")
+        print(f"🔄 Saving NIFTI: {os.path.basename(output_path)}")
         
         # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        print(f"   Output directory: {os.path.dirname(output_path)}")
         
         # Fix orientation: Rotate 90 degrees counterclockwise to match NIFTI convention
         # This corrects the 90-degree rotation issue
         image_array_corrected = np.rot90(image_array, k=1)  # k=1 means 90 degrees counterclockwise
-        print(f"   After rotation: {image_array_corrected.shape}")
         
         # Ensure 3D array for NIFTI (add singleton dimension if 2D)
         if image_array_corrected.ndim == 2:
             image_array_corrected = image_array_corrected[:, :, np.newaxis]
-            print(f"   Added singleton dimension: {image_array_corrected.shape}")
         
         # Create affine matrix with proper orientation for medical images
         # Standard radiological orientation: RAS (Right-Anterior-Superior)
@@ -207,41 +272,33 @@ def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optiona
                     # Apply spacing but maintain orientation flips
                     affine[0, 0] = -float(pixel_spacing[1])  # Column spacing (x) with flip
                     affine[1, 1] = -float(pixel_spacing[0])  # Row spacing (y) with flip
-                    print(f"   Applied pixel spacing: {pixel_spacing}")
                 
                 if hasattr(dicom_data, 'SliceThickness'):
                     affine[2, 2] = float(dicom_data.SliceThickness)
-                    print(f"   Applied slice thickness: {dicom_data.SliceThickness}")
                 elif hasattr(dicom_data, 'SpacingBetweenSlices'):
                     affine[2, 2] = float(dicom_data.SpacingBetweenSlices)
-                    print(f"   Applied slice spacing: {dicom_data.SpacingBetweenSlices}")
                 
                 if hasattr(dicom_data, 'ImagePositionPatient'):
                     position = dicom_data.ImagePositionPatient
                     affine[0, 3] = float(position[0])  # X position
                     affine[1, 3] = float(position[1])  # Y position
                     affine[2, 3] = float(position[2])  # Z position
-                    print(f"   Applied image position: {position}")
             except Exception as e:
                 print(f"   Warning: Could not apply DICOM metadata: {e}")
         
-        print(f"   Affine matrix shape: {affine.shape}")
-        
         # Create NIFTI image with corrected orientation
-        print(f"   Creating NIFTI image...")
         nifti_img = nib.Nifti1Image(image_array_corrected, affine=affine)
         
         # Save NIFTI file
-        print(f"   Saving to: {output_path}")
         nib.save(nifti_img, output_path)
         
         # Verify the file was created
         if os.path.exists(output_path):
             file_size = os.path.getsize(output_path)
-            print(f"   ✅ File saved successfully: {file_size} bytes")
+            print(f"   ✅ NIFTI saved: {file_size} bytes")
             return True
         else:
-            print(f"   ❌ File was not created at {output_path}")
+            print(f"   ❌ File was not created")
             return False
         
     except Exception as e:
@@ -277,13 +334,15 @@ def apply_geometric_transforms_preserve_values(original_array: np.ndarray, proce
             # For now, simply resize to match processed dimensions
             # This is a simplified approach - in a full implementation, we'd need
             # to track the exact crop bounds and apply them here
+            print(f"     Dimension change detected: {orig_w}x{orig_h} → {proc_w}x{proc_h}")
             if target_size is not None:
-                result = resize_with_aspect_ratio(result, target_size)
+                result = resize_with_aspect_ratio_preserve_values(result, target_size)
             else:
-                result = resize_with_aspect_ratio(result, (proc_w, proc_h))
+                result = resize_with_aspect_ratio_preserve_values(result, (proc_w, proc_h))
         elif target_size is not None:
             # Same dimensions but target size specified
-            result = resize_with_aspect_ratio(result, target_size)
+            print(f"     Same dimensions, resizing to target: {target_size}")
+            result = resize_with_aspect_ratio_preserve_values(result, target_size)
         
         return result
         
@@ -328,6 +387,9 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
             print(f"Failed to read DICOM: {status}")
             return False
         
+        print(f"   ✅ Read original DICOM: shape {original_image_array.shape}, dtype {original_image_array.dtype}")
+        print(f"   ✅ Original value range: {original_image_array.min():.1f} to {original_image_array.max():.1f}")
+        
         # For NIFTI, use original values but apply the same geometric transformations
         # if processed_image_array was provided (for segmentation-based cropping)
         try:
@@ -338,14 +400,34 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
                     if processing_info.get('segmentation_success', False) and processing_info.get('crop_bounds') is not None:
                         crop_y_min, crop_x_min, crop_y_max, crop_x_max = processing_info['crop_bounds']
                         
+                        print(f"   Original DICOM range: {original_image_array.min():.1f} to {original_image_array.max():.1f}, dtype: {original_image_array.dtype}")
+                        print(f"   Original DICOM shape: {original_image_array.shape}")
+                        
+                        # Validate crop coordinates
+                        orig_h, orig_w = original_image_array.shape[:2]
+                        crop_w = crop_x_max - crop_x_min
+                        crop_h = crop_y_max - crop_y_min
+                        crop_area_pct = (crop_w * crop_h) / (orig_w * orig_h) * 100
+                        
+                        print(f"   Crop validation:")
+                        print(f"     Original: {orig_w}x{orig_h} = {orig_w * orig_h:,} pixels")
+                        print(f"     Crop: {crop_w}x{crop_h} = {crop_w * crop_h:,} pixels ({crop_area_pct:.1f}% of original)")
+                        print(f"     Coordinates: y({crop_y_min}:{crop_y_max}) x({crop_x_min}:{crop_x_max})")
+                        
                         # Apply the exact same crop to the original image
                         if len(original_image_array.shape) == 3:
                             image_array = original_image_array[crop_y_min:crop_y_max, crop_x_min:crop_x_max, :].astype(np.float32)
                         else:
                             image_array = original_image_array[crop_y_min:crop_y_max, crop_x_min:crop_x_max].astype(np.float32)
                         
-                        print(f"   Applied segmentation crop: {crop_y_min}:{crop_y_max}, {crop_x_min}:{crop_x_max}")
-                        print(f"   Result shape: {image_array.shape}")
+                        print(f"   After crop shape: {image_array.shape}, range: {image_array.min():.1f} to {image_array.max():.1f}")
+                        
+                        # Apply final resizing if needed, preserving the original value range
+                        if target_size is not None:
+                            # Use resize that preserves float32 values
+                            image_array = resize_with_aspect_ratio_preserve_values(image_array, target_size)
+                            print(f"   After resize shape: {image_array.shape}, range: {image_array.min():.1f} to {image_array.max():.1f}")
+                        
                     else:
                         print("   No valid segmentation info, using geometric fallback")
                         image_array = apply_geometric_transforms_preserve_values(
@@ -356,25 +438,31 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
                     image_array = apply_geometric_transforms_preserve_values(
                         original_image_array, processed_image_array, target_size
                     )
-                
-                # Apply final resizing if needed
-                if target_size is not None:
-                    image_array = resize_with_aspect_ratio(image_array, target_size)
                     
             elif processed_image_array is not None:
                 # Fall back to geometric transformation matching
+                print("   Using geometric transform fallback")
                 image_array = apply_geometric_transforms_preserve_values(
                     original_image_array, processed_image_array, target_size
                 )
+                print(f"   After geometric transform: range {image_array.min():.1f} to {image_array.max():.1f}, dtype {image_array.dtype}")
             else:
                 # No processing was done, use original image
+                print("   No processing, using original image")
                 image_array = original_image_array.astype(np.float32)
+                print(f"   After float32 conversion: range {image_array.min():.1f} to {image_array.max():.1f}")
                 
                 # Resize if requested
                 if target_size is not None:
-                    image_array = resize_with_aspect_ratio(image_array, target_size)
+                    print("   Applying value-preserving resize")
+                    image_array = resize_with_aspect_ratio_preserve_values(image_array, target_size)
+                    print(f"   After resize: range {image_array.min():.1f} to {image_array.max():.1f}")
             
-            print(f"🔄 Saving NIFTI: {os.path.basename(output_path)} (shape: {image_array.shape}, range: {image_array.min():.1f}-{image_array.max():.1f})")
+            print(f"🔄 FINAL CHECK before saving NIFTI:")
+            print(f"   Final array shape: {image_array.shape}")
+            print(f"   Final array dtype: {image_array.dtype}")
+            print(f"   Final value range: {image_array.min():.1f} to {image_array.max():.1f}")
+            
             result = save_as_nifti(image_array, output_path, dicom_data)
             if result:
                 print(f"✅ NIFTI saved successfully: {output_path}")

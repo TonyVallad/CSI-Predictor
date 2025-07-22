@@ -24,6 +24,7 @@ __all__ = [
     'get_output_path',
     'validate_dicom_file',
     'apply_geometric_transforms_preserve_values',
+    'resize_with_aspect_ratio_preserve_values',
     'test_nifti_conversion',
     
     # Pre-processing functions
