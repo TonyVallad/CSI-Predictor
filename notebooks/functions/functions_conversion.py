@@ -428,10 +428,7 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
                     image_array = resize_with_aspect_ratio_preserve_values(image_array, target_size)
             
             result = save_as_nifti(image_array, output_path, dicom_data)
-            if result:
-                print(f"✅ NIFTI saved successfully: {output_path}")
-            else:
-                print(f"❌ NIFTI save failed: {output_path}")
+            
             return result
             
         except Exception as e:
