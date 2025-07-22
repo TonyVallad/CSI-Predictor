@@ -369,26 +369,14 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
     Returns:
         bool: True if successful, False otherwise
     """
-    # Debug: Print conversion details
-    print(f"🔄 convert_dicom_to_format called:")
-    print(f"   DICOM: {os.path.basename(dicom_path)}")
-    print(f"   Output: {os.path.basename(output_path)}")
-    print(f"   Format: '{output_format}' (lower: '{output_format.lower()}')")
-    print(f"   Target size: {target_size}")
-    print(f"   Has processed array: {processed_image_array is not None}")
-    print(f"   Has processing info: {processing_info is not None}")
     
     # For NIFTI format, we need to preserve original DICOM values
     if output_format.lower() == 'nifti':
-        print(f"🎯 Entering NIFTI conversion path...")
         # Always read original DICOM data for NIFTI to preserve value range
         original_image_array, dicom_data, status = read_dicom_file(dicom_path)
         if original_image_array is None:
             print(f"Failed to read DICOM: {status}")
             return False
-        
-        print(f"   ✅ Read original DICOM: shape {original_image_array.shape}, dtype {original_image_array.dtype}")
-        print(f"   ✅ Original value range: {original_image_array.min():.1f} to {original_image_array.max():.1f}")
         
         # For NIFTI, use original values but apply the same geometric transformations
         # if processed_image_array was provided (for segmentation-based cropping)
@@ -400,19 +388,11 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
                     if processing_info.get('segmentation_success', False) and processing_info.get('crop_bounds') is not None:
                         crop_y_min, crop_x_min, crop_y_max, crop_x_max = processing_info['crop_bounds']
                         
-                        print(f"   Original DICOM range: {original_image_array.min():.1f} to {original_image_array.max():.1f}, dtype: {original_image_array.dtype}")
-                        print(f"   Original DICOM shape: {original_image_array.shape}")
-                        
                         # Validate crop coordinates
                         orig_h, orig_w = original_image_array.shape[:2]
                         crop_w = crop_x_max - crop_x_min
                         crop_h = crop_y_max - crop_y_min
                         crop_area_pct = (crop_w * crop_h) / (orig_w * orig_h) * 100
-                        
-                        print(f"   Crop validation:")
-                        print(f"     Original: {orig_w}x{orig_h} = {orig_w * orig_h:,} pixels")
-                        print(f"     Crop: {crop_w}x{crop_h} = {crop_w * crop_h:,} pixels ({crop_area_pct:.1f}% of original)")
-                        print(f"     Coordinates: y({crop_y_min}:{crop_y_max}) x({crop_x_min}:{crop_x_max})")
                         
                         # Apply the exact same crop to the original image
                         if len(original_image_array.shape) == 3:
@@ -420,48 +400,32 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
                         else:
                             image_array = original_image_array[crop_y_min:crop_y_max, crop_x_min:crop_x_max].astype(np.float32)
                         
-                        print(f"   After crop shape: {image_array.shape}, range: {image_array.min():.1f} to {image_array.max():.1f}")
-                        
                         # Apply final resizing if needed, preserving the original value range
                         if target_size is not None:
                             # Use resize that preserves float32 values
                             image_array = resize_with_aspect_ratio_preserve_values(image_array, target_size)
-                            print(f"   After resize shape: {image_array.shape}, range: {image_array.min():.1f} to {image_array.max():.1f}")
                         
                     else:
-                        print("   No valid segmentation info, using geometric fallback")
                         image_array = apply_geometric_transforms_preserve_values(
                             original_image_array, processed_image_array, target_size
                         )
                 except Exception as e:
-                    print(f"   Warning: Segmentation transform failed: {e}, using fallback")
                     image_array = apply_geometric_transforms_preserve_values(
                         original_image_array, processed_image_array, target_size
                     )
                     
             elif processed_image_array is not None:
                 # Fall back to geometric transformation matching
-                print("   Using geometric transform fallback")
                 image_array = apply_geometric_transforms_preserve_values(
                     original_image_array, processed_image_array, target_size
                 )
-                print(f"   After geometric transform: range {image_array.min():.1f} to {image_array.max():.1f}, dtype {image_array.dtype}")
             else:
                 # No processing was done, use original image
-                print("   No processing, using original image")
                 image_array = original_image_array.astype(np.float32)
-                print(f"   After float32 conversion: range {image_array.min():.1f} to {image_array.max():.1f}")
-                
+                                
                 # Resize if requested
                 if target_size is not None:
-                    print("   Applying value-preserving resize")
                     image_array = resize_with_aspect_ratio_preserve_values(image_array, target_size)
-                    print(f"   After resize: range {image_array.min():.1f} to {image_array.max():.1f}")
-            
-            print(f"🔄 FINAL CHECK before saving NIFTI:")
-            print(f"   Final array shape: {image_array.shape}")
-            print(f"   Final array dtype: {image_array.dtype}")
-            print(f"   Final value range: {image_array.min():.1f} to {image_array.max():.1f}")
             
             result = save_as_nifti(image_array, output_path, dicom_data)
             if result:
