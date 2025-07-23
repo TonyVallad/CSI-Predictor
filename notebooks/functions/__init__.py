@@ -8,6 +8,7 @@ from .functions_conversion import *
 from .functions_pre_processing import *
 from .functions_visualisation import *
 from .functions_archimed import *
+from .functions_nifti_histograms import *
 
 __version__ = "2.0.0"
 __author__ = "ArchiMed Images Team"
@@ -52,4 +53,10 @@ __all__ = [
     'manage_file_discovery',
     'validate_configuration',
     'print_configuration_summary',
+    
+    # NIFTI Histogram functions
+    'analyze_bits_used_distribution',
+    'create_nifti_histograms',
+    'create_histogram_grid',
+    'create_global_nifti_histogram',
 ] 
