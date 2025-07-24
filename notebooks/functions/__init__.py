@@ -20,7 +20,6 @@ __all__ = [
     # Conversion functions
     'read_dicom_file',
     'normalize_image_array', 
-    'resize_with_aspect_ratio',
     'save_as_png',
     'save_as_nifti',
     'convert_dicom_to_format',
