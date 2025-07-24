@@ -10,6 +10,7 @@ from .functions_visualisation import *
 from .functions_archimed import *
 from .functions_nifti_histograms import *
 from .functions_image_exploration import *
+from .functions_concatenation import *
 
 __version__ = "2.0.0"
 __author__ = "ArchiMed Images Team"
@@ -71,4 +72,13 @@ __all__ = [
     'validate_pipeline_paths',
     'print_validation_summary',
     'detect_image_format',
+    
+    # Concatenation functions
+    'concat_pipeline_images',
+    'get_pipeline_images',
+    'concatenate_images_horizontally',
+    'concat_with_progress',
+    'get_concat_summary',
+    'print_concat_summary',
+    'clean_concat_files',
 ] 
