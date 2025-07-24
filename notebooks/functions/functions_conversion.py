@@ -188,7 +188,8 @@ def save_as_png(image_array: np.ndarray, output_path: str) -> bool:
         return False
 
 
-def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optional[pydicom.Dataset] = None) -> bool:
+def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optional[pydicom.Dataset] = None,
+                  apply_percentile_clipping: bool = False, percentile_threshold: float = 99.0) -> bool:
     """
     Save image array as NIFTI file with proper orientation and DICOM metadata preservation.
     
@@ -196,19 +197,29 @@ def save_as_nifti(image_array: np.ndarray, output_path: str, dicom_data: Optiona
         image_array (np.ndarray): Image array to save
         output_path (str): Output file path
         dicom_data (Optional[pydicom.Dataset]): DICOM dataset for metadata
+        apply_percentile_clipping (bool): Apply percentile clipping for AI model optimization
+        percentile_threshold (float): Percentile threshold for clipping (default: 99.0)
     
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-
+        # Make a copy to avoid modifying the original array
+        image_to_save = image_array.copy().astype(np.float32)
+        
+        # Apply percentile clipping if requested (for AI model optimization)
+        if apply_percentile_clipping:
+            clip_value = np.percentile(image_to_save, percentile_threshold)
+            original_min = image_to_save.min()
+            image_to_save = np.clip(image_to_save, original_min, clip_value)
+            print(f"   📊 Applied {percentile_threshold}th percentile clipping: max value {clip_value:.1f} HU")
         
         # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         # Fix orientation: Rotate 90 degrees counterclockwise to match NIFTI convention
         # This corrects the 90-degree rotation issue
-        image_array_corrected = np.rot90(image_array, k=1)  # k=1 means 90 degrees counterclockwise
+        image_array_corrected = np.rot90(image_to_save, k=1)  # k=1 means 90 degrees counterclockwise
         
         # Ensure 3D array for NIFTI (add singleton dimension if 2D)
         if image_array_corrected.ndim == 2:
@@ -311,7 +322,8 @@ def apply_geometric_transforms_preserve_values(original_array: np.ndarray, proce
 def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: str, 
                           target_size: Optional[Tuple[int, int]] = None,
                           processed_image_array: Optional[np.ndarray] = None,
-                          processing_info: Optional[Dict[str, Any]] = None) -> bool:
+                          processing_info: Optional[Dict[str, Any]] = None,
+                          config: Optional[Dict[str, Any]] = None) -> bool:
     """
     Convert DICOM file to specified format (PNG or NIFTI).
     
@@ -322,6 +334,7 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
         target_size (Optional[Tuple[int, int]]): Target size for resizing
         processed_image_array (Optional[np.ndarray]): Pre-processed image array
         processing_info (Optional[Dict[str, Any]]): Processing metadata with transformation info
+        config (Optional[Dict[str, Any]]): Configuration dictionary with AI optimization settings
     
     Returns:
         bool: True if successful, False otherwise
@@ -384,7 +397,13 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
                 if target_size is not None:
                     image_array = resize_with_aspect_ratio_preserve_values(image_array, target_size)
             
-            result = save_as_nifti(image_array, output_path, dicom_data)
+            # Get AI optimization settings from config
+            apply_clipping = config.get('APPLY_PERCENTILE_CLIPPING', False) if config else False
+            percentile_threshold = config.get('PERCENTILE_THRESHOLD', 99.0) if config else 99.0
+            
+            result = save_as_nifti(image_array, output_path, dicom_data, 
+                                 apply_percentile_clipping=apply_clipping,
+                                 percentile_threshold=percentile_threshold)
             
             return result
             
