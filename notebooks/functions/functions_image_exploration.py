@@ -59,8 +59,9 @@ def load_image_file(image_path: str, target_size: Optional[Tuple[int, int]] = No
             else:
                 img_data = np.zeros_like(img_data, dtype=np.uint8)
             
-            # Fix NIFTI orientation (transpose to correct counterclockwise rotation)
+            # Fix NIFTI orientation (transpose to correct counterclockwise rotation, then flip horizontally)
             img_data = np.transpose(img_data)
+            img_data = np.fliplr(img_data)  # Flip left-right to correct horizontal mirroring
             
         else:
             # Load PNG/JPG file
