@@ -59,6 +59,9 @@ def load_image_file(image_path: str, target_size: Optional[Tuple[int, int]] = No
             else:
                 img_data = np.zeros_like(img_data, dtype=np.uint8)
             
+            # Fix NIFTI orientation (transpose to correct counterclockwise rotation)
+            img_data = np.transpose(img_data)
+            
         else:
             # Load PNG/JPG file
             img = Image.open(image_path)
