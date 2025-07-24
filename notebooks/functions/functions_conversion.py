@@ -86,50 +86,7 @@ def normalize_image_array(image_array: np.ndarray, target_dtype: str = 'uint8') 
         raise ValueError(f"Unsupported target dtype: {target_dtype}")
 
 
-def resize_with_aspect_ratio(image_array: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
-    """
-    Resize image while maintaining aspect ratio and center cropping if needed.
-    
-    Args:
-        image_array (np.ndarray): Input image array
-        target_size (Tuple[int, int]): Target size (width, height)
-    
-    Returns:
-        np.ndarray: Resized image array
-    """
-    if len(image_array.shape) == 2:
-        pil_image = Image.fromarray(image_array, mode='L')
-    else:
-        pil_image = Image.fromarray(image_array)
-    
-    current_width, current_height = pil_image.size
-    target_width, target_height = target_size
-    current_ratio = current_width / current_height
-    target_ratio = target_width / target_height
-    
-    # Calculate crop dimensions to maintain aspect ratio
-    if current_ratio > target_ratio:
-        # Image is wider, crop width
-        new_width = int(current_height * target_ratio)
-        new_height = current_height
-        left = (current_width - new_width) // 2
-        top = 0
-        right = left + new_width
-        bottom = current_height
-    else:
-        # Image is taller, crop height
-        new_width = current_width
-        new_height = int(current_width / target_ratio)
-        left = 0
-        top = (current_height - new_height) // 2
-        right = current_width
-        bottom = top + new_height
-    
-    # Crop and resize
-    pil_image = pil_image.crop((left, top, right, bottom))
-    pil_image = pil_image.resize(target_size, Image.Resampling.LANCZOS)
-    
-    return np.array(pil_image)
+
 
 
 def resize_with_aspect_ratio_preserve_values(image_array: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
@@ -452,9 +409,20 @@ def convert_dicom_to_format(dicom_path: str, output_path: str, output_format: st
         # Normalize to uint8 for PNG processing
         image_array = normalize_image_array(image_array, 'uint8')
     
-    # Resize if requested
+    # Resize if requested (using precision-preserving function)
     if target_size is not None:
-        image_array = resize_with_aspect_ratio(image_array, target_size)
+        # Convert to float32 for precision-preserving resize
+        image_array_float = image_array.astype(np.float32)
+        
+        # Use the precision-preserving resize function
+        resized_float = resize_with_aspect_ratio_preserve_values(image_array_float, target_size)
+        
+        # Normalize back to 0-255 range for PNG
+        if resized_float.max() > resized_float.min():
+            image_array = ((resized_float - resized_float.min()) / 
+                          (resized_float.max() - resized_float.min()) * 255).astype(np.uint8)
+        else:
+            image_array = resized_float.astype(np.uint8)
     
     # Save as PNG
     if output_format.lower() == 'png':

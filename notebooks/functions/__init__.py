@@ -9,6 +9,7 @@ from .functions_pre_processing import *
 from .functions_visualisation import *
 from .functions_archimed import *
 from .functions_nifti_histograms import *
+from .functions_image_exploration import *
 
 __version__ = "2.0.0"
 __author__ = "ArchiMed Images Team"
@@ -59,4 +60,15 @@ __all__ = [
     'create_nifti_histograms',
     'create_histogram_grid',
     'create_global_nifti_histogram',
+    
+    # Image Exploration functions
+    'load_image_file',
+    'find_file_ids_from_path',
+    'find_image_for_file_id',
+    'display_pipeline_images',
+    'export_pipeline_images',
+    'get_available_file_ids',
+    'validate_pipeline_paths',
+    'print_validation_summary',
+    'detect_image_format',
 ] 
