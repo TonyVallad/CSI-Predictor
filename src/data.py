@@ -336,9 +336,9 @@ def get_default_transforms(phase: str = "train", model_arch: str = "resnet50", u
             return transforms.Compose([
                 transforms.Resize(input_size),
                 transforms.Grayscale(num_output_channels=3),  # Convert grayscale to 3-channel
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomRotation(degrees=10),
-                transforms.ColorJitter(brightness=0.1, contrast=0.1),
+                # transforms.RandomHorizontalFlip(p=0.5),
+                # transforms.RandomRotation(degrees=10),
+                # transforms.ColorJitter(brightness=0.1, contrast=0.1),
                 transforms.ToTensor(),
                 # RadDINO uses ImageNet normalization
                 transforms.Normalize(mean=mean, std=std)
@@ -357,9 +357,9 @@ def get_default_transforms(phase: str = "train", model_arch: str = "resnet50", u
         return transforms.Compose([
             transforms.Resize(input_size),
             transforms.Grayscale(num_output_channels=3),  # Convert grayscale to 3-channel
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(degrees=10),
-            transforms.ColorJitter(brightness=0.1, contrast=0.1),
+            # transforms.RandomHorizontalFlip(p=0.5),
+            # transforms.RandomRotation(degrees=10),
+            # transforms.ColorJitter(brightness=0.1, contrast=0.1),
             transforms.ToTensor(),
             transforms.Normalize(mean=mean, std=std)
         ])

@@ -91,6 +91,7 @@ class Config:
     csv_dir: str = "/home/pyuser/data/Paradise_CSV"
     ini_dir: str = "./config/"
     graph_dir: str = "./graphs"  # Directory for saving graphs and visualizations
+    debug_dir: str = "./debug_output"  # Directory for debug visualizations
     
     # Labels configuration
     labels_csv: str = "Labeled_Data_RAW.csv"
@@ -212,7 +213,8 @@ class ConfigLoader:
             # Also check system environment variables
             system_env_keys = [
                 "DEVICE", "LOAD_DATA_TO_MEMORY", "DATA_SOURCE", "DATA_DIR",
-                "MODELS_DIR", "CSV_DIR", "INI_DIR", "LABELS_CSV", "LABELS_CSV_SEPARATOR"
+                "MODELS_DIR", "CSV_DIR", "INI_DIR", "GRAPH_DIR", "DEBUG_DIR", 
+                "LABELS_CSV", "LABELS_CSV_SEPARATOR"
             ]
             for key in system_env_keys:
                 if key in os.environ:
@@ -405,6 +407,7 @@ class ConfigLoader:
             csv_dir=self.get_config_value("CSV_DIR", "/home/pyuser/data/Paradise_CSV", str),
             ini_dir=self.get_config_value("INI_DIR", "./config/", str),
             graph_dir=self.get_config_value("GRAPH_DIR", "./graphs", str),
+            debug_dir=self.get_config_value("DEBUG_DIR", "./debug_output", str),
             labels_csv=self.get_config_value("LABELS_CSV", "Labeled_Data_RAW.csv", str),
             labels_csv_separator=self.get_config_value("LABELS_CSV_SEPARATOR", ";", str),
             
@@ -604,6 +607,8 @@ class ConfigLoader:
         new_config.set("ENVIRONMENT", "MODELS_DIR", config.models_dir)
         new_config.set("ENVIRONMENT", "CSV_DIR", config.csv_dir)
         new_config.set("ENVIRONMENT", "INI_DIR", config.ini_dir)
+        new_config.set("ENVIRONMENT", "GRAPH_DIR", config.graph_dir)
+        new_config.set("ENVIRONMENT", "DEBUG_DIR", config.debug_dir)
         new_config.set("ENVIRONMENT", "LABELS_CSV", config.labels_csv)
         new_config.set("ENVIRONMENT", "LABELS_CSV_SEPARATOR", config.labels_csv_separator)
         new_config.set("ENVIRONMENT", "LOAD_DATA_TO_MEMORY", str(config.load_data_to_memory))

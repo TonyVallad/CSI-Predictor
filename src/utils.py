@@ -459,12 +459,21 @@ def show_batch(
         # Convert image to numpy for display
         img_np = denorm_images[i].permute(1, 2, 0).numpy()
         
-        # Display original image in first column
-        axes[i, 0].imshow(img_np)
+        # Create title with ground truth CSI scores
         title = f'Sample {i+1}'
         if file_ids and i < len(file_ids):
             title += f'\n{file_ids[i]}'
-        axes[i, 0].set_title(title)
+        
+        # Add ground truth CSI scores to title
+        gt_scores = []
+        for j in range(6):  # 6 CSI zones
+            score = labels[i, j].item()
+            gt_scores.append(str(score))
+        title += f'\nGT: [{",".join(gt_scores)}]'
+        
+        # Display original image in first column
+        axes[i, 0].imshow(img_np)
+        axes[i, 0].set_title(title, fontsize=8)
         axes[i, 0].axis('off')
         
         # Display CSI zones predictions in remaining columns
