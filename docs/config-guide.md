@@ -38,6 +38,11 @@ GRAPH_DIR=./graphs
 LABELS_CSV=Labeled_Data_RAW.csv
 LABELS_CSV_SEPARATOR=;
 
+# Image Format Configuration (V2.0)
+IMAGE_FORMAT=nifti
+IMAGE_EXTENSION=.nii.gz
+NORMALIZATION_STRATEGY=medical
+
 # Training Parameters (can override INI settings)
 BATCH_SIZE=32
 N_EPOCHS=100
@@ -135,18 +140,34 @@ MODELS_DIR=/mnt/shared/csi_models
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `LABELS_CSV` | string | `"Labeled_Data_RAW.csv"` | Name of the labels CSV file |
-| `LABELS_CSV_SEPARATOR` | string | `";"` | CSV delimiter character |
+| `LABELS_CSV` | string | `"Labeled_Data_RAW.csv"` | CSV filename containing labels |
+| `LABELS_CSV_SEPARATOR` | string | `";"` | CSV separator character |
 
-**Examples:**
+### Image Format Configuration (V2.0)
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `IMAGE_FORMAT` | string | `"nifti"` | Image format (currently NIFTI only) |
+| `IMAGE_EXTENSION` | string | `".nii.gz"` | File extension for image files |
+| `NORMALIZATION_STRATEGY` | string | `"medical"` | Normalization strategy: `"medical"`, `"imagenet"`, `"simple"`, `"custom"` |
+| `CUSTOM_MEAN` | string | `""` | Custom mean values (comma-separated, for custom strategy) |
+| `CUSTOM_STD` | string | `""` | Custom std values (comma-separated, for custom strategy) |
+
+**Normalization Strategy Examples:**
 ```bash
-# Comma-separated CSV
-LABELS_CSV=csi_labels.csv
-LABELS_CSV_SEPARATOR=,
+# Medical imaging default (recommended)
+NORMALIZATION_STRATEGY=medical
 
-# Tab-separated file
-LABELS_CSV=labels.tsv
-LABELS_CSV_SEPARATOR=\t
+# Traditional computer vision normalization
+NORMALIZATION_STRATEGY=imagenet
+
+# Simple 0-1 normalization
+NORMALIZATION_STRATEGY=simple
+
+# Custom normalization values
+NORMALIZATION_STRATEGY=custom
+CUSTOM_MEAN=0.5,0.5,0.5
+CUSTOM_STD=0.3,0.3,0.3
 ```
 
 ### Training Parameters

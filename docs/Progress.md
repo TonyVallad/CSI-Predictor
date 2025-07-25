@@ -34,8 +34,8 @@
 
 ## Todo
 
-- Switch from using PNGs to NIFTIs. (with original dynamic range if possible)
-- Harmonize pixel values (normalization/re-scaling).
+- ✅ **Switch from using PNGs to NIFTIs** - **COMPLETED in V2.0** (with full diagnostic dynamic range preserved)
+- ✅ **Harmonize pixel values** - **COMPLETED** (configurable normalization strategies implemented)
 - Clean the dataset (exclude out-of-scope images).
 - Compute average CSI and compare to ground truths.
 - Conduct manual spot checks to verify visual consistency and softmax outputs.

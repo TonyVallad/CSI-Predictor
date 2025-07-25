@@ -184,3 +184,6 @@ wandb/
 
 # Graphs
 /graphs/
+
+# Cursor
+.cursor/

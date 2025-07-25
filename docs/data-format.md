@@ -7,9 +7,14 @@ This guide explains the expected data structure and format for CSI-Predictor.
 ```
 /your/data/path/
 ├── Paradise_Images/          # Images directory (DATA_DIR)
-│   ├── image001.jpg
-│   ├── image002.jpg
-│   ├── image003.png
+│   ├── image001.nii.gz
+│   ├── image002.nii.gz
+│   ├── image003.nii.gz
+│   └── ...
+├── Paradise_Masks/           # Mask files directory (separate from images)
+│   ├── image001_overlay.png
+│   ├── image001_left_lung_mask.png
+│   ├── image001_right_lung_mask.png
 │   └── ...
 └── Paradise_CSV/             # CSV directory (CSV_DIR)
     └── Labeled_Data_RAW.csv  # Labels file (LABELS_CSV)
@@ -18,21 +23,23 @@ This guide explains the expected data structure and format for CSI-Predictor.
 ## Image Requirements
 
 ### Supported Formats
-- **JPEG** (.jpg, .jpeg) - Recommended
-- **PNG** (.png) - Supported
-- **TIFF** (.tiff, .tif) - Supported
+- **NIFTI** (.nii.gz) - **Required format for training images**
+- **PNG** (.png) - Used only for mask files and overlays
 
 ### Image Specifications
-- **Resolution**: Any resolution (automatically resized)
-- **Color**: Grayscale or RGB (converted to RGB)
-- **Orientation**: Portrait or landscape
-- **File Size**: No strict limits (larger files take more memory)
+- **Format**: NIFTI (.nii.gz) with float32 precision
+- **Data Type**: Hounsfield Units (HU) with 99th percentile clipping applied
+- **Dimensions**: 2D single-slice images (automatically handled)
+- **Coordinate System**: Radiological convention (automatically corrected during loading)
+- **Value Range**: Preserves full diagnostic range (~-1024 to +400 HU after clipping)
+- **File Size**: Typically ~500 KB per image
 
 ### Image Quality Guidelines
-- **Minimum Resolution**: 224x224 pixels (higher recommended)
-- **Recommended Resolution**: 512x512 or higher
-- **Image Quality**: Clear, well-contrasted chest X-rays
+- **Processing**: Images should be pre-processed using the ArchiMed pipeline
+- **Segmentation**: Lung segmentation and cropping applied during NIFTI creation
+- **Resolution**: Target size 518x518 pixels (configurable via TARGET_SIZE)
 - **Positioning**: Standard PA (posterior-anterior) or AP (anterior-posterior) views
+- **Value Preservation**: Full Hounsfield Unit range maintained for quantitative analysis
 
 ## Labels CSV Format
 
@@ -42,7 +49,7 @@ The labels CSV file must contain the following columns:
 
 | Column | Type | Description | Example |
 |--------|------|-------------|---------|
-| `FileID` | string | Image filename (with extension) | `image001.jpg` |
+| `FileID` | string | Image filename (without extension) | `image001`, `patient_123` |
 | `right_sup` | int/float | Right superior zone CSI score | `0`, `1`, `2`, `3`, `NaN` |
 | `left_sup` | int/float | Left superior zone CSI score | `0`, `1`, `2`, `3`, `NaN` |
 | `right_mid` | int/float | Right middle zone CSI score | `0`, `1`, `2`, `3`, `NaN` |
@@ -54,11 +61,11 @@ The labels CSV file must contain the following columns:
 
 ```csv
 FileID;right_sup;left_sup;right_mid;left_mid;right_inf;left_inf
-image001.jpg;0;0;1;1;0;2
-image002.jpg;1;0;NaN;2;1;1
-image003.jpg;2;3;1;1;2;2
-image004.jpg;0;0;0;0;0;0
-image005.jpg;;;;;;;  # All empty - converted to ungradable (4)
+image001;0;0;1;1;0;2
+image002;1;0;NaN;2;1;1
+image003;2;3;1;1;2;2
+image004;0;0;0;0;0;0
+image005;;;;;;;  # All empty - converted to ungradable (4)
 ```
 
 ### CSI Score Values
@@ -312,14 +319,18 @@ import os
 df = pd.read_csv('labels.csv', sep=';')
 image_dir = '/path/to/images'
 
+# LEGACY: Example of fixing FileID extensions (no longer needed with NIFTI format)
+# For reference only - current project uses NIFTI format exclusively
+
 for idx, file_id in enumerate(df['FileID']):
     base_name = os.path.splitext(file_id)[0]
     
-    # Check for different extensions
-    for ext in ['.jpg', '.jpeg', '.png', '.tiff']:
-        if os.path.exists(os.path.join(image_dir, base_name + ext)):
-            df.loc[idx, 'FileID'] = base_name + ext
-            break
+    # Current format: Check for NIFTI extension
+    nifti_path = os.path.join(image_dir, base_name + '.nii.gz')
+    if os.path.exists(nifti_path):
+        df.loc[idx, 'FileID'] = base_name  # Store without extension
+    else:
+        print(f"Warning: NIFTI file not found for {base_name}")
 
 df.to_csv('labels_corrected.csv', sep=';', index=False)
 ```

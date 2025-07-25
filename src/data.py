@@ -32,6 +32,14 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+# Import nibabel for NIFTI file support
+try:
+    import nibabel as nib
+    NIBABEL_AVAILABLE = True
+except ImportError:
+    NIBABEL_AVAILABLE = False
+    nib = None
+
 from .config import Config, cfg
 from .data_split import pytorch_train_val_test_split
 
@@ -70,6 +78,41 @@ CSI_COLUMNS = ['right_sup', 'left_sup', 'right_mid', 'left_mid', 'right_inf', 'l
 
 # CSI class mapping: 0-3 are actual scores, 4 is unknown/ungradable
 CSI_UNKNOWN_CLASS = 4
+
+
+def get_normalization_parameters(config: Optional[Config] = None) -> Tuple[List[float], List[float]]:
+    """
+    Get normalization mean and std based on the configured strategy.
+    
+    Args:
+        config: Configuration object (uses global cfg if None)
+        
+    Returns:
+        Tuple of (mean, std) lists for normalization
+    """
+    if config is None:
+        config = cfg
+    
+    strategy = config.normalization_strategy.lower()
+    
+    if strategy == "imagenet":
+        # Standard ImageNet normalization
+        return [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+    elif strategy == "medical":
+        # Medical image normalization (assumes grayscale converted to 3-channel)
+        return [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
+    elif strategy == "simple":
+        # Simple normalization (no mean/std subtraction, just 0-1 range)
+        return [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]
+    elif strategy == "custom":
+        # Custom normalization values
+        if config.custom_mean is None or config.custom_std is None:
+            print("Warning: Custom normalization strategy selected but custom_mean/custom_std not provided. Falling back to medical.")
+            return [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
+        return config.custom_mean, config.custom_std
+    else:
+        print(f"Warning: Unknown normalization strategy '{strategy}'. Falling back to medical.")
+        return [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
 
 
 def get_raddino_processor(use_official: bool = False):
@@ -260,7 +303,7 @@ def split_data_stratified(
         return train_df, val_df, test_df
 
 
-def get_default_transforms(phase: str = "train", model_arch: str = "resnet50", use_official_processor: bool = False) -> transforms.Compose:
+def get_default_transforms(phase: str = "train", model_arch: str = "resnet50", use_official_processor: bool = False, config: Optional[Config] = None) -> transforms.Compose:
     """
     Get default image transformations for different phases.
     
@@ -268,12 +311,16 @@ def get_default_transforms(phase: str = "train", model_arch: str = "resnet50", u
         phase: Phase name ('train', 'val', 'test')
         model_arch: Model architecture name for input size
         use_official_processor: Whether to use official RadDINO processor (RadDINO only)
+        config: Configuration object for normalization parameters
         
     Returns:
         Composed transformations
     """
     # Get input size for model architecture
     input_size = MODEL_INPUT_SIZES.get(model_arch, (224, 224))
+    
+    # Get normalization parameters
+    mean, std = get_normalization_parameters(config)
     
     # Special handling for RadDINO with official processor
     if (model_arch.lower().replace('_', '').replace('-', '') == 'raddino' and 
@@ -294,7 +341,7 @@ def get_default_transforms(phase: str = "train", model_arch: str = "resnet50", u
                 transforms.ColorJitter(brightness=0.1, contrast=0.1),
                 transforms.ToTensor(),
                 # RadDINO uses ImageNet normalization
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                transforms.Normalize(mean=mean, std=std)
             ])
         else:  # val or test
             return transforms.Compose([
@@ -302,7 +349,7 @@ def get_default_transforms(phase: str = "train", model_arch: str = "resnet50", u
                 transforms.Grayscale(num_output_channels=3),  # Convert grayscale to 3-channel
                 transforms.ToTensor(),
                 # RadDINO uses ImageNet normalization
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                transforms.Normalize(mean=mean, std=std)
             ])
     
     # Standard transforms for other models
@@ -314,14 +361,14 @@ def get_default_transforms(phase: str = "train", model_arch: str = "resnet50", u
             transforms.RandomRotation(degrees=10),
             transforms.ColorJitter(brightness=0.1, contrast=0.1),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            transforms.Normalize(mean=mean, std=std)
         ])
     else:  # val or test
         return transforms.Compose([
             transforms.Resize(input_size),
             transforms.Grayscale(num_output_channels=3),  # Convert grayscale to 3-channel
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            transforms.Normalize(mean=mean, std=std)
         ])
 
 
@@ -341,7 +388,8 @@ class CSIDataset(Dataset):
         phase: str = "train",
         load_to_memory: bool = False,
         use_official_processor: bool = False,
-        model_arch: str = "resnet50"
+        model_arch: str = "resnet50",
+        config: Optional[Config] = None
     ):
         """
         Initialize CSI dataset.
@@ -354,6 +402,7 @@ class CSIDataset(Dataset):
             load_to_memory: Whether to pre-cache images in memory
             use_official_processor: Whether to use official RadDINO processor
             model_arch: Model architecture for default transforms
+            config: Configuration object for normalization and file format settings
         """
         self.dataframe = dataframe.reset_index(drop=True)
         self.data_path = Path(data_path)
@@ -361,6 +410,7 @@ class CSIDataset(Dataset):
         self.load_to_memory = load_to_memory
         self.use_official_processor = use_official_processor
         self.model_arch = model_arch
+        self.config = config if config is not None else cfg
         
         # Set up processor for RadDINO if needed
         self.raddino_processor = None
@@ -373,7 +423,7 @@ class CSIDataset(Dataset):
         
         # Set default transform if none provided
         if transform is None:
-            self.transform = get_default_transforms(phase, model_arch, use_official_processor)
+            self.transform = get_default_transforms(phase, model_arch, use_official_processor, self.config)
         else:
             self.transform = transform
         
@@ -392,20 +442,68 @@ class CSIDataset(Dataset):
         if self.load_to_memory:
             print(f"Pre-cached {len(self.cached_images)} images in memory")
     
+    def _load_nifti_image(self, image_path: Path) -> Optional[np.ndarray]:
+        """
+        Load and preprocess a NIFTI image with coordinate corrections.
+        
+        Args:
+            image_path: Path to the NIFTI file
+            
+        Returns:
+            Preprocessed image array as float32, or None if loading failed
+        """
+        if not NIBABEL_AVAILABLE:
+            raise RuntimeError("nibabel is required for NIFTI support. Install with: pip install nibabel")
+        
+        try:
+            # Load NIFTI file
+            nifti_img = nib.load(str(image_path))
+            img_data = nifti_img.get_fdata().astype(np.float32)
+            
+            # Handle potential 3D NIFTI with single slice (squeeze any singleton dimensions)
+            img_data = np.squeeze(img_data)
+            
+            # Ensure we have 2D data
+            if len(img_data.shape) > 2:
+                print(f"Warning: Unexpected NIFTI shape {img_data.shape} for {image_path}")
+                return None
+            
+            # Apply coordinate corrections (same as functions_image_exploration.py)
+            # Fix NIFTI orientation (transpose to correct counterclockwise rotation, then flip horizontally)
+            img_data = np.transpose(img_data)
+            img_data = np.fliplr(img_data)  # Flip left-right to correct horizontal mirroring
+            
+            # Normalize to 0-1 range (NIFTI files already have 99th percentile clipping applied)
+            if img_data.max() > img_data.min():
+                img_data = (img_data - img_data.min()) / (img_data.max() - img_data.min())
+            else:
+                img_data = np.zeros_like(img_data, dtype=np.float32)
+            
+            return img_data
+            
+        except Exception as e:
+            print(f"Error loading NIFTI file {image_path}: {e}")
+            return None
+    
     def _cache_images(self) -> None:
         """Pre-cache all images in memory."""
         print(f"Pre-caching {len(self.dataframe)} images in memory...")
         
         for idx in tqdm(range(len(self.dataframe)), desc="Caching images"):
             file_id = self.dataframe.iloc[idx]['FileID']
-            # Automatically append .png extension to FileID
-            image_filename = f"{file_id}.png"
+            # Use NIFTI extension from config
+            image_filename = f"{file_id}{self.config.image_extension}"
             image_path = self.data_path / image_filename
             
             try:
-                # Load and store raw PIL image (before transforms)
-                image = Image.open(image_path).convert('RGB')
-                self.cached_images[idx] = image
+                # Load NIFTI file as float32 array
+                image_array = self._load_nifti_image(image_path)
+                if image_array is not None:
+                    # Store the raw float32 array (coordinate-corrected and normalized to 0-1)
+                    self.cached_images[idx] = image_array
+                else:
+                    # Store None for failed images
+                    self.cached_images[idx] = None
             except Exception as e:
                 print(f"Warning: Failed to cache image {image_path}: {e}")
                 # Store None for failed images
@@ -417,7 +515,7 @@ class CSIDataset(Dataset):
     
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, str]:
         """
-        Get dataset item with optional RadDINO processor support.
+        Get dataset item with NIFTI loading support.
         
         Args:
             idx: Item index
@@ -433,22 +531,27 @@ class CSIDataset(Dataset):
         
         # Load image (from cache or disk)
         if self.load_to_memory and idx in self.cached_images:
-            image = self.cached_images[idx]
-            if image is None:
+            image_array = self.cached_images[idx]
+            if image_array is None:
                 # Handle cached failed image
                 raise RuntimeError(f"Cached image at index {idx} is None")
         else:
             # Load from disk
-            # Automatically append .png extension to FileID if not present
-            if not file_id.endswith(('.png', '.jpg', '.jpeg')):
-                image_filename = f"{file_id}.png"
-            else:
-                image_filename = file_id
+            image_filename = f"{file_id}{self.config.image_extension}"
             image_path = self.data_path / image_filename
             try:
-                image = Image.open(image_path).convert('RGB')
+                image_array = self._load_nifti_image(image_path)
+                if image_array is None:
+                    raise RuntimeError(f"Failed to load NIFTI image {image_path}")
             except Exception as e:
                 raise RuntimeError(f"Failed to load image {image_path}: {e}")
+        
+        # Convert single-channel float32 array to PIL Image for transform compatibility
+        # Scale to 0-255 range and convert to uint8
+        image_uint8 = (image_array * 255).astype(np.uint8)
+        
+        # Convert to PIL Image (grayscale)
+        image = Image.fromarray(image_uint8, mode='L')
         
         # Apply preprocessing
         if (self.use_official_processor and self.raddino_processor and 
@@ -547,31 +650,34 @@ def create_data_loaders(
     train_dataset = CSIDataset(
         dataframe=train_df,
         data_path=config.data_path,
-        transform=get_default_transforms("train", config.model_arch, use_official_processor),
+        transform=get_default_transforms("train", config.model_arch, use_official_processor, config),
         phase="train",
         load_to_memory=config.load_data_to_memory,
         use_official_processor=use_official_processor,
-        model_arch=config.model_arch
+        model_arch=config.model_arch,
+        config=config
     )
     
     val_dataset = CSIDataset(
         dataframe=val_df,
         data_path=config.data_path,
-        transform=get_default_transforms("val", config.model_arch, use_official_processor),
+        transform=get_default_transforms("val", config.model_arch, use_official_processor, config),
         phase="val",
         load_to_memory=config.load_data_to_memory,
         use_official_processor=use_official_processor,
-        model_arch=config.model_arch
+        model_arch=config.model_arch,
+        config=config
     )
     
     test_dataset = CSIDataset(
         dataframe=test_df,
         data_path=config.data_path,
-        transform=get_default_transforms("test", config.model_arch, use_official_processor),
+        transform=get_default_transforms("test", config.model_arch, use_official_processor, config),
         phase="test",
         load_to_memory=config.load_data_to_memory,
         use_official_processor=use_official_processor,
-        model_arch=config.model_arch
+        model_arch=config.model_arch,
+        config=config
     )
     
     # Create data loaders

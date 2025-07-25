@@ -128,18 +128,20 @@ clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
 2. **Réduction des variations d'éclairage** : Homogénéisation inter-patients
 3. **Préservation des détails** : Évite la perte d'information dans les zones sombres/claires
 
-## Comparaison PNG vs NIFTI (V2.1)
+## Comparaison Formats d'Images (V2.0)
 
-| Aspect | PNG | NIFTI Standard | NIFTI Optimisé IA |
-|--------|-----|---------------|-------------------|
-| **Type de données** | uint8 (0-255) | float32 (HU complètes) | float32 (HU écrêtées) |
-| **Gamme dynamique** | Normalisée | Originale préservée | 99e percentile |
-| **Valeurs HU** | ❌ Perdues | ✅ Complètes | ✅ Diagnostiques seulement |
-| **Artefacts** | ❌ Normalisés | ⚠️ Présents | ✅ Éliminés |
-| **Métadonnées médicales** | ❌ Perdues | ✅ Préservées | ✅ Préservées |
-| **Taille fichier** | Petite (~50 KB) | Moyenne (~500 KB) | Moyenne (~500 KB) |
-| **Usage recommandé** | Visualisation, web | Recherche, diagnostic | Entraînement IA |
-| **Configuration** | N/A | `APPLY_PERCENTILE_CLIPPING = False` | `APPLY_PERCENTILE_CLIPPING = True` |
+| Aspect | PNG (Legacy) | NIFTI (Actuel) |
+|--------|--------------|----------------|
+| **Type de données** | uint8 (0-255) | float32 (HU avec écrêtage 99e percentile) |
+| **Gamme dynamique** | Normalisée | Diagnostique préservée (~-1024 à +400 HU) |
+| **Valeurs HU** | ❌ Perdues | ✅ Préservées et diagnostiques |
+| **Artefacts** | ❌ Normalisés | ✅ Éliminés via écrêtage 99e percentile |
+| **Métadonnées médicales** | ❌ Perdues | ✅ Préservées (espacement, orientation) |
+| **Taille fichier** | Petite (~50 KB) | Moyenne (~500 KB) |
+| **Usage recommandé** | Visualisation web uniquement | **Entraînement IA et analyse quantitative** |
+| **Format du projet** | ❌ Non supporté | ✅ **Format principal** |
+
+**Note importante**: Le projet CSI-Predictor utilise désormais **exclusivement le format NIFTI** pour les images principales. Les fichiers PNG sont conservés uniquement pour les masques de segmentation et les overlays de visualisation.
 
 ## Exemples pratiques
 

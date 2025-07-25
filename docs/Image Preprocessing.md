@@ -75,46 +75,75 @@ else:  # val or test
     ])
 ```
 
-### 3. **Step-by-Step Preprocessing**
+## 3. **Current Preprocessing Pipeline (V2.0 - NIFTI Format)**
 
 1. **Image Loading**: 
-   - Images loaded as PNG files from disk
-   - Converted to RGB format: `Image.open(image_path).convert('RGB')`
+   - Images loaded as NIFTI files (.nii.gz) from disk
+   - Uses nibabel: `nib.load(image_path).get_fdata().astype(np.float32)`
+   - Coordinate corrections applied: `np.transpose()` + `np.fliplr()`
 
-2. **Resizing**: 
+2. **Value Preprocessing**:
+   - Hounsfield Units already clipped to 99th percentile (applied during NIFTI creation)
+   - Normalized to 0-1 range: `(img_data - min) / (max - min)`
+   - Converted to PIL Image format for transform compatibility
+
+3. **Resizing**: 
    - Model-specific sizes (RadDINO: 518×518, others: mostly 224×224)
 
-3. **Channel Conversion**: 
-   - Grayscale X-rays converted to 3-channel RGB for model compatibility
+4. **Channel Conversion**: 
+   - Single-channel NIFTI converted to 3-channel RGB for model compatibility
 
-4. **Data Augmentation** (Training only):
+5. **Data Augmentation** (Training only):
    - Random horizontal flip (50% probability)
    - Random rotation (±10 degrees)
    - Color jitter (brightness/contrast ±10%)
 
-5. **Tensor Conversion**: 
+6. **Tensor Conversion**: 
    - PIL Image → PyTorch tensor
 
-6. **Normalization**: 
-   - **All models use ImageNet normalization**:
-     - Mean: `[0.485, 0.456, 0.406]`
-     - Std: `[0.229, 0.224, 0.225]`
+7. **Normalization** (Configurable):
+   - **Medical** (default): `mean=[0.5, 0.5, 0.5]`, `std=[0.5, 0.5, 0.5]`
+   - **ImageNet**: `mean=[0.485, 0.456, 0.406]`, `std=[0.229, 0.224, 0.225]`
+   - **Simple**: `mean=[0.0, 0.0, 0.0]`, `std=[1.0, 1.0, 1.0]`
+   - **Custom**: User-specified values via configuration
 
-### 4. **Notable Design Choices**
+### 4. **Notable Design Choices (V2.0)**
 
+- **NIFTI Format**: Preserves full diagnostic precision with float32 Hounsfield Units
+- **Coordinate Corrections**: Automatic handling of NIFTI orientation differences
+- **Medical-First Normalization**: Default to medical-appropriate normalization instead of ImageNet
 - **RadDINO gets larger input**: 518×518 vs 224×224 for others
-- **Same normalization for all**: Despite RadDINO being chest X-ray specific, it still uses ImageNet normalization
-- **No RadDINO-specific processor**: The code loads RadDINO's `AutoImageProcessor` but doesn't use it - instead uses standard PyTorch transforms
-- **Grayscale to RGB conversion**: All models expect 3-channel input even for grayscale X-rays
+- **Configurable Normalization**: Supports multiple strategies for different model requirements
+- **Value Range Preservation**: Full HU range maintained until final normalization step
 
-### 5. **Potential Issue with RadDINO**
+### 5. **Improved RadDINO Handling**
 
-There's a discrepancy in your RadDINO implementation: the model loads the official `AutoImageProcessor` but doesn't use it:
+The V2.0 implementation properly supports RadDINO's official preprocessing:
 
-```35:35:src/models/rad_dino.py
-self.processor = AutoImageProcessor.from_pretrained(repo, use_fast=True)
+```python
+# RadDINO with official processor (recommended)
+use_official_processor = True  # Uses AutoImageProcessor from microsoft/rad-dino
+
+# RadDINO with standard transforms (fallback)
+use_official_processor = False  # Uses standard PyTorch transforms
 ```
 
-However, the actual preprocessing uses standard PyTorch transforms instead of this processor. This might be causing suboptimal performance since RadDINO was likely trained with its specific preprocessing pipeline.
+### 6. **Configuration Options**
 
-The preprocessing is consistent across training/validation/testing phases, with data augmentation only applied during training.
+Set normalization strategy in your configuration:
+
+```python
+# Medical imaging default (recommended)
+normalization_strategy = "medical"
+
+# Traditional computer vision
+normalization_strategy = "imagenet"
+
+# Simple 0-1 normalization
+normalization_strategy = "simple"
+
+# Custom values
+normalization_strategy = "custom"
+custom_mean = [0.5, 0.5, 0.5]
+custom_std = [0.3, 0.3, 0.3]
+```

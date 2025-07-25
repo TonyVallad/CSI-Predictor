@@ -65,10 +65,19 @@ class Config:
         model_arch: Model architecture name
         use_official_processor: Whether to use official RadDINO processor
         
+        # Image Format Configuration (V2.0 - NIFTI Support)
+        image_format: str = "nifti"  # Image format (nifti only)
+        image_extension: str = ".nii.gz"  # File extension for images
+        
+        # Normalization Strategy Configuration
+        normalization_strategy: str = "medical"  # Options: "imagenet", "medical", "simple", "custom"
+        custom_mean: List[float] = None  # Custom mean values for normalization (if strategy="custom")
+        custom_std: List[float] = None   # Custom std values for normalization (if strategy="custom")
+        
         # Internal
-        _env_vars: Environment variables dict
-        _ini_vars: INI file variables dict
-        _missing_keys: List of missing configuration keys
+        _env_vars: Dict[str, Any] = field(default_factory=dict, init=False)
+        _ini_vars: Dict[str, Any] = field(default_factory=dict, init=False)
+        _missing_keys: List[str] = field(default_factory=list, init=False)
     """
     
     # Environment and Device Settings
@@ -99,19 +108,21 @@ class Config:
     
     # Model Configuration
     model_arch: str = "resnet50"
-    use_official_processor: bool = False  # Whether to use official RadDINO processor
-    zone_focus_method: str = "masking"  # "masking" or "spatial_reduction"
+    use_official_processor: bool = False
     
-    # Zone Masking Configuration
-    use_segmentation_masking: bool = True
-    masking_strategy: str = "attention"  # "zero" or "attention"
-    attention_strength: float = 0.7
-    masks_path: str = "/home/pyuser/data/Paradise_Masks"
+    # Image Format Configuration (V2.0 - NIFTI Support)
+    image_format: str = "nifti"  # Image format (nifti only)
+    image_extension: str = ".nii.gz"  # File extension for images
     
-    # Internal fields (not for external configuration)
-    _env_vars: Dict[str, Any] = field(default_factory=dict, repr=False)
-    _ini_vars: Dict[str, Any] = field(default_factory=dict, repr=False)
-    _missing_keys: List[str] = field(default_factory=list, repr=False)
+    # Normalization Strategy Configuration
+    normalization_strategy: str = "medical"  # Options: "imagenet", "medical", "simple", "custom"
+    custom_mean: List[float] = None  # Custom mean values for normalization (if strategy="custom")
+    custom_std: List[float] = None   # Custom std values for normalization (if strategy="custom")
+    
+    # Internal
+    _env_vars: Dict[str, Any] = field(default_factory=dict, init=False)
+    _ini_vars: Dict[str, Any] = field(default_factory=dict, init=False)
+    _missing_keys: List[str] = field(default_factory=list, init=False)
     
     @property
     def data_path(self) -> str:
@@ -413,6 +424,19 @@ class ConfigLoader:
             attention_strength=self.get_config_value("ATTENTION_STRENGTH", 0.7, float),
             masks_path=self.get_config_value("MASKS_PATH", "/home/pyuser/data/Paradise_Masks", str),
             
+            # Image Format Configuration (V2.0 - NIFTI Support)
+            image_format=self.get_config_value("IMAGE_FORMAT", "nifti", str),
+            image_extension=self.get_config_value("IMAGE_EXTENSION", ".nii.gz", str),
+            
+            # Normalization Strategy Configuration
+            normalization_strategy=self.get_config_value("NORMALIZATION_STRATEGY", "medical", str),
+            custom_mean=self.parse_comma_separated_list(
+                self.get_config_value("CUSTOM_MEAN", "", str)
+            ),
+            custom_std=self.parse_comma_separated_list(
+                self.get_config_value("CUSTOM_STD", "", str)
+            ),
+            
             # Internal
             _env_vars=self._env_vars.copy(),
             _ini_vars=self._ini_vars.copy(),
@@ -480,6 +504,23 @@ class ConfigLoader:
         if not (0.0 <= config.attention_strength <= 1.0):
             errors.append(f"attention_strength must be between 0.0 and 1.0, got {config.attention_strength}")
         
+        # Validate image format
+        valid_image_formats = ["nifti"]
+        if config.image_format not in valid_image_formats:
+            errors.append(f"image_format must be one of {valid_image_formats}, got {config.image_format}")
+        
+        # Validate normalization strategy
+        valid_normalization_strategies = ["imagenet", "medical", "simple", "custom"]
+        if config.normalization_strategy.lower() not in valid_normalization_strategies:
+            errors.append(f"normalization_strategy must be one of {valid_normalization_strategies}, got {config.normalization_strategy}")
+        
+        # Validate custom mean and std if strategy is "custom"
+        if config.normalization_strategy.lower() == "custom":
+            if config.custom_mean is None or len(config.custom_mean) != 3:
+                errors.append("custom_mean must be a list of 3 float values (R, G, B)")
+            if config.custom_std is None or len(config.custom_std) != 3:
+                errors.append("custom_std must be a list of 3 float values (R, G, B)")
+        
         # Log validation results
         if errors:
             for error in errors:
@@ -535,6 +576,18 @@ class ConfigLoader:
         new_config.set("ZONES", "MASKING_STRATEGY", config.masking_strategy)
         new_config.set("ZONES", "ATTENTION_STRENGTH", str(config.attention_strength))
         new_config.set("ZONES", "MASKS_PATH", config.masks_path)
+        
+        # Add image format section
+        new_config.add_section("IMAGE_FORMAT")
+        new_config.set("IMAGE_FORMAT", "IMAGE_FORMAT", config.image_format)
+        new_config.set("IMAGE_FORMAT", "IMAGE_EXTENSION", config.image_extension)
+        
+        # Add normalization section
+        new_config.add_section("NORMALIZATION")
+        new_config.set("NORMALIZATION", "NORMALIZATION_STRATEGY", config.normalization_strategy)
+        if config.normalization_strategy.lower() == "custom":
+            new_config.set("NORMALIZATION", "CUSTOM_MEAN", ",".join(map(str, config.custom_mean)))
+            new_config.set("NORMALIZATION", "CUSTOM_STD", ",".join(map(str, config.custom_std)))
         
         # Add environment section with resolved paths
         new_config.add_section("ENVIRONMENT")
