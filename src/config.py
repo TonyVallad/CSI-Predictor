@@ -442,13 +442,13 @@ class ConfigLoader:
             ),
             custom_std=self.parse_comma_separated_list(
                 self.get_config_value("CUSTOM_STD", "", str)
-            ),
-            
-            # Internal
-            _env_vars=self._env_vars.copy(),
-            _ini_vars=self._ini_vars.copy(),
-            _missing_keys=self._missing_keys.copy()
+            )
         )
+        
+        # Set internal fields after creation (they have init=False)
+        object.__setattr__(config, '_env_vars', self._env_vars.copy())
+        object.__setattr__(config, '_ini_vars', self._ini_vars.copy())
+        object.__setattr__(config, '_missing_keys', self._missing_keys.copy())
         
         # Log missing keys
         if self._missing_keys:
