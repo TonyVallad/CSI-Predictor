@@ -489,6 +489,8 @@ class CSIDataset(Dataset):
         """Pre-cache all images in memory."""
         print(f"Pre-caching {len(self.dataframe)} images in memory...")
         
+        failed_files = []
+        
         for idx in tqdm(range(len(self.dataframe)), desc="Caching images"):
             file_id = self.dataframe.iloc[idx]['FileID']
             # Use NIFTI extension from config
@@ -496,6 +498,13 @@ class CSIDataset(Dataset):
             image_path = self.data_path / image_filename
             
             try:
+                # Check if file exists first
+                if not image_path.exists():
+                    print(f"Warning: NIFTI file not found: {image_path}")
+                    failed_files.append(f"{file_id} (file not found)")
+                    self.cached_images[idx] = None
+                    continue
+                
                 # Load NIFTI file as float32 array
                 image_array = self._load_nifti_image(image_path)
                 if image_array is not None:
@@ -503,11 +512,31 @@ class CSIDataset(Dataset):
                     self.cached_images[idx] = image_array
                 else:
                     # Store None for failed images
+                    print(f"Warning: Failed to load NIFTI data from {image_path}")
+                    failed_files.append(f"{file_id} (load failed)")
                     self.cached_images[idx] = None
             except Exception as e:
                 print(f"Warning: Failed to cache image {image_path}: {e}")
+                failed_files.append(f"{file_id} (exception: {e})")
                 # Store None for failed images
                 self.cached_images[idx] = None
+        
+        # Report summary
+        successful_count = len(self.dataframe) - len(failed_files)
+        print(f"Caching complete: {successful_count}/{len(self.dataframe)} images loaded successfully")
+        
+        if failed_files:
+            print(f"Failed to load {len(failed_files)} images:")
+            for failed_file in failed_files[:10]:  # Show first 10 failures
+                print(f"  - {failed_file}")
+            if len(failed_files) > 10:
+                print(f"  ... and {len(failed_files) - 10} more")
+            
+            # Suggest solutions
+            print("\nPossible solutions:")
+            print("1. Check that all FileIDs in your CSV have corresponding .nii.gz files")
+            print("2. Verify the data path is correct:", self.data_path)
+            print("3. Ensure NIFTI files were created successfully during conversion")
     
     def __len__(self) -> int:
         """Return dataset length."""
@@ -533,8 +562,12 @@ class CSIDataset(Dataset):
         if self.load_to_memory and idx in self.cached_images:
             image_array = self.cached_images[idx]
             if image_array is None:
-                # Handle cached failed image
-                raise RuntimeError(f"Cached image at index {idx} is None")
+                # Handle cached failed image with more specific error
+                image_filename = f"{file_id}{self.config.image_extension}"
+                image_path = self.data_path / image_filename
+                raise RuntimeError(f"Failed to load cached NIFTI image for FileID '{file_id}' (index {idx}). "
+                                 f"Expected file: {image_path}. "
+                                 f"Check that this NIFTI file exists and is valid.")
         else:
             # Load from disk
             image_filename = f"{file_id}{self.config.image_extension}"
@@ -542,9 +575,9 @@ class CSIDataset(Dataset):
             try:
                 image_array = self._load_nifti_image(image_path)
                 if image_array is None:
-                    raise RuntimeError(f"Failed to load NIFTI image {image_path}")
+                    raise RuntimeError(f"Failed to load NIFTI image for FileID '{file_id}': {image_path}")
             except Exception as e:
-                raise RuntimeError(f"Failed to load image {image_path}: {e}")
+                raise RuntimeError(f"Failed to load image for FileID '{file_id}' from {image_path}: {e}")
         
         # Convert single-channel float32 array to PIL Image for transform compatibility
         # Scale to 0-255 range and convert to uint8
