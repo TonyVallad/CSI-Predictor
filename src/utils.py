@@ -369,7 +369,8 @@ def show_batch(
     data_loader: DataLoader,
     num_samples: int = 8,
     figsize: Tuple[int, int] = (16, 8),
-    save_path: Optional[str] = None
+    save_path: Optional[str] = None,
+    config: Optional = None
 ) -> None:
     """
     Show a batch of images with their CSI zone predictions side-by-side.
@@ -382,6 +383,7 @@ def show_batch(
         num_samples: Number of samples to display
         figsize: Figure size for matplotlib
         save_path: Path to save the figure (optional)
+        config: Configuration object for denormalization parameters
         
     # Unit test stub:
     # def test_show_batch():
@@ -396,6 +398,15 @@ def show_batch(
     import torch
     import numpy as np
     from torchvision.utils import make_grid
+    
+    # Import here to avoid circular imports
+    if config is None:
+        from .config import cfg
+        config = cfg
+    
+    # Get normalization parameters
+    from .data import get_normalization_parameters
+    mean, std = get_normalization_parameters(config)
     
     # Get a batch from the data loader
     data_iter = iter(data_loader)
@@ -416,6 +427,8 @@ def show_batch(
         indices = torch.randperm(images.size(0))[:num_samples]
         images = images[indices]
         labels = labels[indices]
+        if file_ids is not None:
+            file_ids = [file_ids[i] for i in indices]
     
     batch_size = images.size(0)
     
@@ -431,11 +444,16 @@ def show_batch(
     if batch_size == 1:
         axes = axes.reshape(1, -1)
     
-    # Denormalize images for display
-    mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
-    denorm_images = images * std + mean
+    # Denormalize images for display using configured normalization
+    mean_tensor = torch.tensor(mean).view(1, 3, 1, 1)
+    std_tensor = torch.tensor(std).view(1, 3, 1, 1)
+    denorm_images = images * std_tensor + mean_tensor
     denorm_images = torch.clamp(denorm_images, 0, 1)
+    
+    print(f"Displaying batch with {config.normalization_strategy} denormalization")
+    print(f"Mean: {mean}, Std: {std}")
+    if file_ids:
+        print(f"File IDs: {file_ids}")
     
     for i in range(batch_size):
         # Convert image to numpy for display
@@ -443,7 +461,10 @@ def show_batch(
         
         # Display original image in first column
         axes[i, 0].imshow(img_np)
-        axes[i, 0].set_title(f'Sample {i+1}')
+        title = f'Sample {i+1}'
+        if file_ids and i < len(file_ids):
+            title += f'\n{file_ids[i]}'
+        axes[i, 0].set_title(title)
         axes[i, 0].axis('off')
         
         # Display CSI zones predictions in remaining columns
@@ -490,7 +511,7 @@ def show_batch(
     
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"Batch visualization saved to {save_path}")
+        print(f"Batch visualization saved to: {save_path}")
     
     plt.show()
 
