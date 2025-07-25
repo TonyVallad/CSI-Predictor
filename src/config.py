@@ -109,6 +109,13 @@ class Config:
     # Model Configuration
     model_arch: str = "resnet50"
     use_official_processor: bool = False
+    zone_focus_method: str = "masking"  # "masking" or "spatial_reduction"
+    
+    # Zone Masking Configuration
+    use_segmentation_masking: bool = True
+    masking_strategy: str = "attention"  # "zero" or "attention"
+    attention_strength: float = 0.7
+    masks_path: str = "/home/pyuser/data/Paradise_Masks"
     
     # Image Format Configuration (V2.0 - NIFTI Support)
     image_format: str = "nifti"  # Image format (nifti only)
