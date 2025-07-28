@@ -144,15 +144,15 @@ def load_csv_data(csv_path: str) -> pd.DataFrame:
         csv_path: Path to CSV file
         
     Returns:
-        DataFrame with FileID and CSI zone columns
+        DataFrame with FileID, CSI zone columns, and CSI average column
     """
     if not Path(csv_path).exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
     
     print(f"Loading CSV data from {csv_path}")
     
-    # Load only required columns
-    required_columns = ['FileID'] + CSI_COLUMNS
+    # Load required columns plus CSI average column
+    required_columns = ['FileID'] + CSI_COLUMNS + ['csi']
     
     try:
         # Use the CSV separator from configuration
@@ -162,7 +162,14 @@ def load_csv_data(csv_path: str) -> pd.DataFrame:
         # Check for missing columns
         missing_cols = set(required_columns) - set(df.columns)
         if missing_cols:
-            raise ValueError(f"Missing required columns in CSV: {missing_cols}")
+            print(f"Warning: Missing columns in CSV: {missing_cols}")
+            # If 'csi' column is missing, calculate it from individual zones
+            if 'csi' in missing_cols:
+                print("Calculating CSI average from individual zone columns...")
+                df['csi'] = df[CSI_COLUMNS].mean(axis=1)
+                print("CSI average column calculated successfully")
+            else:
+                raise ValueError(f"Missing required columns in CSV: {missing_cols}")
         
         # Apply FileID exclusion filter
         if cfg.excluded_file_ids:
