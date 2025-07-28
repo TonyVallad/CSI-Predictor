@@ -481,6 +481,26 @@ def create_results_analysis_csv(predictions: torch.Tensor, targets: torch.Tensor
     import pandas as pd
     from pathlib import Path
     
+    # Debug: Check CSV data structure
+    logger.info(f"Debug: CSV data columns: {list(csv_data.columns)}")
+    logger.info(f"Debug: CSV data shape: {csv_data.shape}")
+    logger.info(f"Debug: First few FileIDs in CSV: {csv_data['FileID'].head().tolist()}")
+    logger.info(f"Debug: First few FileIDs from dataset: {file_ids[:5] if file_ids else 'None'}")
+    
+    # Check if 'csi' column exists
+    if 'csi' not in csv_data.columns:
+        logger.warning("'csi' column not found in CSV data. Available columns: " + str(list(csv_data.columns)))
+        # Try to find alternative column names
+        possible_csi_cols = [col for col in csv_data.columns if 'csi' in col.lower()]
+        if possible_csi_cols:
+            logger.info(f"Found possible CSI columns: {possible_csi_cols}")
+            csi_column = possible_csi_cols[0]  # Use the first one found
+        else:
+            logger.error("No CSI column found in CSV data")
+            return
+    else:
+        csi_column = 'csi'
+    
     # Convert predictions to class indices
     pred_classes = torch.argmax(predictions, dim=-1)  # [batch_size, n_zones]
     
@@ -495,6 +515,7 @@ def create_results_analysis_csv(predictions: torch.Tensor, targets: torch.Tensor
     
     # Prepare data for CSV
     results_data = []
+    matched_count = 0
     
     for i in range(pred_classes.shape[0]):
         file_id = file_ids[i] if i < len(file_ids) else f"unknown_{i}"
@@ -524,11 +545,37 @@ def create_results_analysis_csv(predictions: torch.Tensor, targets: torch.Tensor
         csi_avg_gt_csv = None
         ahf_risk_gt = None
         
+        # Try to find the file_id in CSV data
+        file_id_found = False
+        
+        # Try exact match first
         if file_id in csv_data['FileID'].values:
             csv_row = csv_data[csv_data['FileID'] == file_id].iloc[0]
-            if 'csi' in csv_row and pd.notna(csv_row['csi']):
-                csi_avg_gt_csv = csv_row['csi']
+            if csi_column in csv_row and pd.notna(csv_row[csi_column]):
+                csi_avg_gt_csv = csv_row[csi_column]
                 ahf_risk_gt = calculate_ahf_class(csi_avg_gt_csv)
+                file_id_found = True
+                matched_count += 1
+        else:
+            # Try string conversion for potential type mismatch
+            try:
+                # Convert FileID to string for comparison
+                file_id_str = str(file_id)
+                if file_id_str in csv_data['FileID'].astype(str).values:
+                    csv_row = csv_data[csv_data['FileID'].astype(str) == file_id_str].iloc[0]
+                    if csi_column in csv_row and pd.notna(csv_row[csi_column]):
+                        csi_avg_gt_csv = csv_row[csi_column]
+                        ahf_risk_gt = calculate_ahf_class(csi_avg_gt_csv)
+                        file_id_found = True
+                        matched_count += 1
+            except Exception as e:
+                # Debug: Log the error for first few cases
+                if i < 5:
+                    logger.info(f"Debug: Error converting FileID '{file_id}': {e}")
+        
+        # Debug: Log first few matches/mismatches
+        if i < 5:
+            logger.info(f"Debug: FileID '{file_id}' - Found in CSV: {file_id_found}, CSI value: {csi_avg_gt_csv}")
         
         # Calculate differences
         csi_avg_dif = csi_avg_gt_csv - csi_avg if csi_avg_gt_csv is not None else None
@@ -559,6 +606,7 @@ def create_results_analysis_csv(predictions: torch.Tensor, targets: torch.Tensor
     
     logger.info(f"Results analysis CSV saved: {csv_path}")
     logger.info(f"  - {len(results_df)} samples analyzed")
+    logger.info(f"  - {matched_count} samples matched with CSV ground truth")
     logger.info(f"  - {results_df['CSI_avg_GT'].notna().sum()} samples with CSV ground truth")
 
 
