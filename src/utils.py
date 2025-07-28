@@ -516,10 +516,11 @@ def show_batch(
             axes[i, col_idx].set_title(f'{zone_name}\n{class_names[csi_score]}', fontsize=8)
             axes[i, col_idx].axis('off')
     
-    plt.tight_layout()
+    # Minimize spacing between subplots
+    plt.tight_layout(pad=0.1, h_pad=0.1, w_pad=0.1)
     
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight', pad_inches=0.1)
         print(f"Batch visualization saved to: {save_path}")
     
     plt.show()

@@ -44,13 +44,13 @@ def main():
     
     print(f"\n🖼️  Visualizing sample images...")
     
-    # Show 10 training images with better spacing
+    # Show 10 training images with minimal spacing
     try:
         train_output_path = debug_dir / "debug_train_batch.png"
         show_batch(
             data_loader=train_loader, 
             num_samples=10, 
-            figsize=(35, 25),  # Larger figure for 10 images with good spacing
+            figsize=(28, 20),  # Smaller figure for tighter spacing
             save_path=str(train_output_path),
             config=cfg
         )
@@ -65,7 +65,7 @@ def main():
         show_batch(
             data_loader=val_loader, 
             num_samples=10, 
-            figsize=(35, 25),  # Same size for consistency
+            figsize=(28, 20),  # Smaller figure for tighter spacing
             save_path=str(val_output_path),
             config=cfg
         )
