@@ -439,8 +439,9 @@ def show_batch(
     # CSI class names
     class_names = ['Normal (0)', 'Mild (1)', 'Moderate (2)', 'Severe (3)', 'Unknown (4)']
     
-    # Create figure with subplots
-    fig, axes = plt.subplots(batch_size, 7, figsize=figsize)
+    # Create figure with subplots - very tight spacing
+    fig, axes = plt.subplots(batch_size, 7, figsize=figsize, 
+                             gridspec_kw={'wspace': 0.0, 'hspace': 0.0})
     if batch_size == 1:
         axes = axes.reshape(1, -1)
     
@@ -516,11 +517,11 @@ def show_batch(
             axes[i, col_idx].set_title(f'{zone_name}\n{class_names[csi_score]}', fontsize=8)
             axes[i, col_idx].axis('off')
     
-    # Minimize spacing between subplots
-    plt.tight_layout(pad=0.1, h_pad=0.1, w_pad=0.1)
+    # Minimize spacing between subplots - very tight layout
+    plt.tight_layout(pad=0.0, h_pad=0.0, w_pad=0.0)
     
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight', pad_inches=0.1)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight', pad_inches=0.0)
         print(f"Batch visualization saved to: {save_path}")
     
     plt.show()
