@@ -44,13 +44,13 @@ def main():
     
     print(f"\n🖼️  Visualizing sample images...")
     
-    # Show 10 training images with tight horizontal, proper vertical spacing
+    # Show 10 training images with very tight horizontal, proper vertical spacing
     try:
         train_output_path = debug_dir / "debug_train_batch.png"
         show_batch(
             data_loader=train_loader, 
             num_samples=10, 
-            figsize=(20, 18),  # Slightly taller for title space, tight width
+            figsize=(16, 20),  # Narrower width for tighter columns, taller for titles
             save_path=str(train_output_path),
             config=cfg
         )
@@ -65,7 +65,7 @@ def main():
         show_batch(
             data_loader=val_loader, 
             num_samples=10, 
-            figsize=(20, 18),  # Slightly taller for title space, tight width
+            figsize=(16, 20),  # Narrower width for tighter columns, taller for titles
             save_path=str(val_output_path),
             config=cfg
         )
