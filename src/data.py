@@ -192,6 +192,58 @@ def load_csv_data(csv_path: str) -> pd.DataFrame:
         raise RuntimeError(f"Failed to load CSV data: {e}")
 
 
+def filter_existing_files(df: pd.DataFrame, data_path: str, image_extension: str = '.nii.gz') -> pd.DataFrame:
+    """
+    Filter DataFrame to include FileIDs that have corresponding image files.
+    
+    Args:
+        df: DataFrame with FileID column
+        data_path: Path to image directory
+        image_extension: Extension for image files
+        
+    Returns:
+        Filtered DataFrame with only existing files
+    """
+    data_path = Path(data_path)
+    missing_files = []
+    existing_files = []
+    
+    print(f"Checking for existing image files in: {data_path}")
+    print(f"Looking for files with extension: {image_extension}")
+    
+    for idx, row in df.iterrows():
+        file_id = row['FileID']
+        # Convert FileID to integer to remove .0 suffix
+        try:
+            file_id_int = int(float(file_id))
+            image_filename = f"{file_id_int}{image_extension}"
+        except (ValueError, TypeError):
+            # If conversion fails, use original file_id
+            image_filename = f"{file_id}{image_extension}"
+        
+        image_path = data_path / image_filename
+        
+        if image_path.exists():
+            existing_files.append(idx)
+        else:
+            missing_files.append(file_id)
+    
+    # Filter DataFrame to only include existing files
+    filtered_df = df.loc[existing_files].reset_index(drop=True)
+    
+    print(f"File existence check complete:")
+    print(f"  - Total files in CSV: {len(df)}")
+    print(f"  - Existing files: {len(filtered_df)}")
+    print(f"  - Missing files: {len(missing_files)}")
+    
+    if missing_files:
+        print(f"Missing files (first 10): {missing_files[:10]}")
+        if len(missing_files) > 10:
+            print(f"  ... and {len(missing_files) - 10} more")
+    
+    return filtered_df
+
+
 def convert_nans_to_unknown(df: pd.DataFrame) -> pd.DataFrame:
     """
     Convert NaN values in CSI zone columns to unknown class (index 4).
@@ -500,8 +552,8 @@ class CSIDataset(Dataset):
         
         for idx in tqdm(range(len(self.dataframe)), desc="Caching images"):
             file_id = self.dataframe.iloc[idx]['FileID']
-            # Use NIFTI extension from config
-            image_filename = f"{file_id}{self.config.image_extension}"
+            # Use helper function to get proper filename
+            image_filename = self._get_image_filename(file_id)
             image_path = self.data_path / image_filename
             
             try:
@@ -549,6 +601,24 @@ class CSIDataset(Dataset):
         """Return dataset length."""
         return len(self.dataframe)
     
+    def _get_image_filename(self, file_id) -> str:
+        """
+        Convert FileID to proper image filename, handling float to int conversion.
+        
+        Args:
+            file_id: FileID from CSV (may be float or string)
+            
+        Returns:
+            Proper image filename without .0 suffix
+        """
+        try:
+            # Convert FileID to integer to remove .0 suffix
+            file_id_int = int(float(file_id))
+            return f"{file_id_int}{self.config.image_extension}"
+        except (ValueError, TypeError):
+            # If conversion fails, use original file_id
+            return f"{file_id}{self.config.image_extension}"
+
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, str]:
         """
         Get dataset item with NIFTI loading support.
@@ -570,14 +640,14 @@ class CSIDataset(Dataset):
             image_array = self.cached_images[idx]
             if image_array is None:
                 # Handle cached failed image with more specific error
-                image_filename = f"{file_id}{self.config.image_extension}"
+                image_filename = self._get_image_filename(file_id)
                 image_path = self.data_path / image_filename
                 raise RuntimeError(f"Failed to load cached NIFTI image for FileID '{file_id}' (index {idx}). "
                                  f"Expected file: {image_path}. "
                                  f"Check that this NIFTI file exists and is valid.")
         else:
             # Load from disk
-            image_filename = f"{file_id}{self.config.image_extension}"
+            image_filename = self._get_image_filename(file_id)
             image_path = self.data_path / image_filename
             try:
                 image_array = self._load_nifti_image(image_path)
@@ -627,7 +697,9 @@ def load_and_split_data(
     train_size: float = 0.7,
     val_size: float = 0.15,
     test_size: float = 0.15,
-    random_state: int = 42
+    random_state: int = 42,
+    data_path: Optional[str] = None,
+    image_extension: Optional[str] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Load CSV data and split into train/val/test sets.
@@ -638,16 +710,25 @@ def load_and_split_data(
         val_size: Fraction for validation set
         test_size: Fraction for test set
         random_state: Random seed
+        data_path: Path to image directory (uses cfg.data_path if None)
+        image_extension: Extension for image files (uses cfg.image_extension if None)
         
     Returns:
         Tuple of (train_df, val_df, test_df)
     """
     if csv_path is None:
         csv_path = cfg.csv_path
+    if data_path is None:
+        data_path = cfg.data_path
+    if image_extension is None:
+        image_extension = cfg.image_extension
     
     # Load and process CSV data
     df = load_csv_data(csv_path)
     df = convert_nans_to_unknown(df)
+    
+    # Filter to only include files that actually exist
+    df = filter_existing_files(df, data_path, image_extension)
     
     # Split data
     train_df, val_df, test_df = split_data_stratified(
@@ -684,7 +765,10 @@ def create_data_loaders(
     # Load and split data if DataFrames not provided
     if train_df is None or val_df is None or test_df is None:
         print("Loading and splitting data...")
-        train_df, val_df, test_df = load_and_split_data()
+        train_df, val_df, test_df = load_and_split_data(
+            data_path=config.data_path,
+            image_extension=config.image_extension
+        )
     
     # Create datasets with processor option
     train_dataset = CSIDataset(
