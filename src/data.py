@@ -688,8 +688,13 @@ class CSIDataset(Dataset):
         # Convert to classification targets (already in range 0-4)
         label_tensor = torch.tensor(labels, dtype=torch.long)
         
-        # Return file_id for zone masking support
-        return image, label_tensor, file_id
+        # Convert file_id to integer to match CSV format and return for zone masking support
+        try:
+            file_id_int = int(float(file_id))
+            return image, label_tensor, str(file_id_int)
+        except (ValueError, TypeError):
+            # If conversion fails, return original file_id
+            return image, label_tensor, file_id
 
 
 def load_and_split_data(
