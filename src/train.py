@@ -17,6 +17,7 @@ from typing import Dict, Any, Optional, Tuple
 from tqdm import tqdm
 import wandb
 import pandas as pd
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, f1_score
 
 from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
@@ -233,6 +234,237 @@ def compute_csi_average_metrics(predictions: torch.Tensor, targets: torch.Tensor
     return metrics
 
 
+def compute_ahf_classification_metrics(predictions: torch.Tensor, targets: torch.Tensor, file_ids: Optional[list] = None, csv_data: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+    """
+    Compute AHF (Acute Heart Failure) classification metrics based on CSI averages.
+    
+    AHF Classification:
+    - AHF_Class = 0: avg CSI <= 1.3 (Low risk)
+    - AHF_Class = 1: 1.3 < avg CSI <= 2.2 (Medium risk)  
+    - AHF_Class = 2: avg CSI > 2.2 (High risk)
+    
+    Args:
+        predictions: Model predictions [batch_size, n_zones, n_classes]
+        targets: Ground truth labels [batch_size, n_zones]
+        file_ids: List of file IDs for this batch (optional)
+        csv_data: DataFrame containing the original CSV data with 'csi' column (optional)
+        
+    Returns:
+        Dictionary with AHF classification metrics and confusion matrices
+    """
+    # Convert predictions to class indices
+    pred_classes = torch.argmax(predictions, dim=-1)  # [batch_size, n_zones]
+    
+    def calculate_ahf_class(avg_csi: float) -> int:
+        """Calculate AHF class based on average CSI."""
+        if avg_csi <= 1.3:
+            return 0
+        elif avg_csi <= 2.2:
+            return 1
+        else:
+            return 2
+    
+    # Calculate predicted CSI averages and AHF classes
+    pred_ahf_classes = []
+    target_ahf_classes = []
+    
+    for i in range(pred_classes.shape[0]):
+        # Get predictions and targets for this sample
+        sample_preds = pred_classes[i]  # [n_zones]
+        sample_targets = targets[i]     # [n_zones]
+        
+        # Calculate average excluding unknown class (4)
+        pred_valid_mask = sample_preds != 4
+        target_valid_mask = sample_targets != 4
+        
+        if pred_valid_mask.sum() > 0:
+            pred_avg = sample_preds[pred_valid_mask].float().mean().item()
+        else:
+            pred_avg = 0.0  # Default if all zones are unknown
+            
+        if target_valid_mask.sum() > 0:
+            target_avg = sample_targets[target_valid_mask].float().mean().item()
+        else:
+            target_avg = 0.0  # Default if all zones are unknown
+            
+        # Calculate AHF classes
+        pred_ahf_class = calculate_ahf_class(pred_avg)
+        target_ahf_class = calculate_ahf_class(target_avg)
+        
+        pred_ahf_classes.append(pred_ahf_class)
+        target_ahf_classes.append(target_ahf_class)
+    
+    # Convert to tensors
+    pred_ahf_tensor = torch.tensor(pred_ahf_classes)
+    target_ahf_tensor = torch.tensor(target_ahf_classes)
+    
+    # Calculate confusion matrix
+    import numpy as np
+    
+    cm = confusion_matrix(target_ahf_tensor, pred_ahf_tensor, labels=[0, 1, 2])
+    
+    # Calculate metrics
+    ahf_accuracy = accuracy_score(target_ahf_tensor, pred_ahf_tensor)
+    ahf_f1_macro = f1_score(target_ahf_tensor, pred_ahf_tensor, average='macro')
+    ahf_f1_weighted = f1_score(target_ahf_tensor, pred_ahf_tensor, average='weighted')
+    
+    # Per-class F1 scores
+    ahf_f1_per_class = f1_score(target_ahf_tensor, pred_ahf_tensor, average=None, labels=[0, 1, 2])
+    
+    metrics = {
+        'ahf_accuracy': ahf_accuracy,
+        'ahf_f1_macro': ahf_f1_macro,
+        'ahf_f1_weighted': ahf_f1_weighted,
+        'ahf_f1_class_0': ahf_f1_per_class[0],  # Low risk
+        'ahf_f1_class_1': ahf_f1_per_class[1],  # Medium risk
+        'ahf_f1_class_2': ahf_f1_per_class[2],  # High risk
+        'ahf_confusion_matrix': cm,
+        'ahf_pred_classes': pred_ahf_classes,
+        'ahf_target_classes': target_ahf_classes
+    }
+    
+    # Compare with CSV ground truth if available
+    if file_ids is not None and csv_data is not None:
+        csv_ahf_classes = []
+        csv_pred_ahf_classes = []
+        valid_file_ids = []
+        
+        for file_id in file_ids:
+            if file_id in csv_data['FileID'].values:
+                csv_row = csv_data[csv_data['FileID'] == file_id].iloc[0]
+                if 'csi' in csv_row and pd.notna(csv_row['csi']):
+                    csv_avg_csi = csv_row['csi']
+                    csv_ahf_class = calculate_ahf_class(csv_avg_csi)
+                    csv_ahf_classes.append(csv_ahf_class)
+                    valid_file_ids.append(file_id)
+        
+        if csv_ahf_classes:
+            # Get corresponding predicted AHF classes for these file IDs
+            for file_id in valid_file_ids:
+                if file_id in file_ids:
+                    idx = file_ids.index(file_id)
+                    csv_pred_ahf_classes.append(pred_ahf_classes[idx])
+            
+            if csv_pred_ahf_classes:
+                csv_ahf_tensor = torch.tensor(csv_ahf_classes)
+                csv_pred_ahf_tensor = torch.tensor(csv_pred_ahf_classes)
+                
+                # Calculate CSV-based confusion matrix
+                csv_cm = confusion_matrix(csv_ahf_tensor, csv_pred_ahf_tensor, labels=[0, 1, 2])
+                
+                # Calculate CSV-based metrics
+                csv_ahf_accuracy = accuracy_score(csv_ahf_tensor, csv_pred_ahf_tensor)
+                csv_ahf_f1_macro = f1_score(csv_ahf_tensor, csv_pred_ahf_tensor, average='macro')
+                csv_ahf_f1_weighted = f1_score(csv_ahf_tensor, csv_pred_ahf_tensor, average='weighted')
+                csv_ahf_f1_per_class = f1_score(csv_ahf_tensor, csv_pred_ahf_tensor, average=None, labels=[0, 1, 2])
+                
+                metrics.update({
+                    'ahf_csv_accuracy': csv_ahf_accuracy,
+                    'ahf_csv_f1_macro': csv_ahf_f1_macro,
+                    'ahf_csv_f1_weighted': csv_ahf_f1_weighted,
+                    'ahf_csv_f1_class_0': csv_ahf_f1_per_class[0],
+                    'ahf_csv_f1_class_1': csv_ahf_f1_per_class[1],
+                    'ahf_csv_f1_class_2': csv_ahf_f1_per_class[2],
+                    'ahf_csv_confusion_matrix': csv_cm,
+                    'ahf_csv_pred_classes': csv_pred_ahf_classes,
+                    'ahf_csv_target_classes': csv_ahf_classes
+                })
+    
+    return metrics
+
+
+def save_ahf_confusion_matrices(train_metrics: Dict[str, Any], val_metrics: Dict[str, Any], 
+                               save_dir: str, run_name: str) -> None:
+    """
+    Save AHF confusion matrices as plots.
+    
+    Args:
+        train_metrics: Training metrics containing AHF confusion matrices
+        val_metrics: Validation metrics containing AHF confusion matrices
+        save_dir: Directory to save the plots
+        run_name: Name of the training run
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from pathlib import Path
+    
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    ahf_class_names = ['Low Risk (0)', 'Medium Risk (1)', 'High Risk (2)']
+    
+    # Create figure with subplots
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    fig.suptitle(f'AHF Classification Confusion Matrices - {run_name}', fontsize=16, fontweight='bold')
+    
+    # Training confusion matrix (internal comparison)
+    if 'ahf_confusion_matrix' in train_metrics:
+        cm_train = train_metrics['ahf_confusion_matrix']
+        sns.heatmap(cm_train, annot=True, fmt='d', cmap='Blues', 
+                   xticklabels=ahf_class_names, yticklabels=ahf_class_names,
+                   ax=axes[0, 0])
+        axes[0, 0].set_title(f'Training AHF Classification\nAccuracy: {train_metrics["ahf_accuracy"]:.3f}, F1: {train_metrics["ahf_f1_macro"]:.3f}')
+        axes[0, 0].set_xlabel('Predicted AHF Class')
+        axes[0, 0].set_ylabel('True AHF Class')
+    
+    # Validation confusion matrix (internal comparison)
+    if 'ahf_confusion_matrix' in val_metrics:
+        cm_val = val_metrics['ahf_confusion_matrix']
+        sns.heatmap(cm_val, annot=True, fmt='d', cmap='Blues', 
+                   xticklabels=ahf_class_names, yticklabels=ahf_class_names,
+                   ax=axes[0, 1])
+        axes[0, 1].set_title(f'Validation AHF Classification\nAccuracy: {val_metrics["ahf_accuracy"]:.3f}, F1: {val_metrics["ahf_f1_macro"]:.3f}')
+        axes[0, 1].set_xlabel('Predicted AHF Class')
+        axes[0, 1].set_ylabel('True AHF Class')
+    
+    # Training confusion matrix (CSV comparison)
+    if 'ahf_csv_confusion_matrix' in train_metrics:
+        cm_train_csv = train_metrics['ahf_csv_confusion_matrix']
+        sns.heatmap(cm_train_csv, annot=True, fmt='d', cmap='Greens', 
+                   xticklabels=ahf_class_names, yticklabels=ahf_class_names,
+                   ax=axes[1, 0])
+        axes[1, 0].set_title(f'Training AHF Classification (vs CSV)\nAccuracy: {train_metrics["ahf_csv_accuracy"]:.3f}, F1: {train_metrics["ahf_csv_f1_macro"]:.3f}')
+        axes[1, 0].set_xlabel('Predicted AHF Class')
+        axes[1, 0].set_ylabel('CSV AHF Class')
+    
+    # Validation confusion matrix (CSV comparison)
+    if 'ahf_csv_confusion_matrix' in val_metrics:
+        cm_val_csv = val_metrics['ahf_csv_confusion_matrix']
+        sns.heatmap(cm_val_csv, annot=True, fmt='d', cmap='Greens', 
+                   xticklabels=ahf_class_names, yticklabels=ahf_class_names,
+                   ax=axes[1, 1])
+        axes[1, 1].set_title(f'Validation AHF Classification (vs CSV)\nAccuracy: {val_metrics["ahf_csv_accuracy"]:.3f}, F1: {val_metrics["ahf_csv_f1_macro"]:.3f}')
+        axes[1, 1].set_xlabel('Predicted AHF Class')
+        axes[1, 1].set_ylabel('CSV AHF Class')
+    
+    plt.tight_layout()
+    plt.savefig(save_path / f'ahf_confusion_matrices_{run_name}.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # Save individual confusion matrices
+    if 'ahf_confusion_matrix' in train_metrics:
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm_train, annot=True, fmt='d', cmap='Blues', 
+                   xticklabels=ahf_class_names, yticklabels=ahf_class_names)
+        plt.title(f'Training AHF Classification - {run_name}\nAccuracy: {train_metrics["ahf_accuracy"]:.3f}, F1: {train_metrics["ahf_f1_macro"]:.3f}')
+        plt.xlabel('Predicted AHF Class')
+        plt.ylabel('True AHF Class')
+        plt.tight_layout()
+        plt.savefig(save_path / f'ahf_confusion_matrix_train_{run_name}.png', dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    if 'ahf_confusion_matrix' in val_metrics:
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm_val, annot=True, fmt='d', cmap='Blues', 
+                   xticklabels=ahf_class_names, yticklabels=ahf_class_names)
+        plt.title(f'Validation AHF Classification - {run_name}\nAccuracy: {val_metrics["ahf_accuracy"]:.3f}, F1: {val_metrics["ahf_f1_macro"]:.3f}')
+        plt.xlabel('Predicted AHF Class')
+        plt.ylabel('True AHF Class')
+        plt.tight_layout()
+        plt.savefig(save_path / f'ahf_confusion_matrix_val_{run_name}.png', dpi=300, bbox_inches='tight')
+        plt.close()
+
+
 def train_epoch(
     model: nn.Module,
     train_loader: DataLoader,
@@ -323,11 +555,19 @@ def train_epoch(
         csv_data=csv_data
     )
     
+    # Compute AHF classification metrics
+    ahf_metrics = compute_ahf_classification_metrics(
+        all_pred_tensor, all_target_tensor, 
+        file_ids=all_file_ids if all_file_ids else None,
+        csv_data=csv_data
+    )
+    
     # Combine metrics
     train_metrics = metrics.get_averages()
     train_metrics.update(f1_metrics)
     train_metrics.update(pr_metrics)
     train_metrics.update(csi_avg_metrics)
+    train_metrics.update(ahf_metrics)
     train_metrics['accuracy'] = accuracy
     
     return train_metrics
@@ -409,11 +649,19 @@ def validate_epoch(
         csv_data=csv_data
     )
     
+    # Compute AHF classification metrics
+    ahf_metrics = compute_ahf_classification_metrics(
+        all_pred_tensor, all_target_tensor, 
+        file_ids=all_file_ids if all_file_ids else None,
+        csv_data=csv_data
+    )
+    
     # Combine metrics
     val_metrics = metrics.get_averages()
     val_metrics.update(f1_metrics)
     val_metrics.update(pr_metrics)
     val_metrics.update(csi_avg_metrics)
+    val_metrics.update(ahf_metrics)
     val_metrics['accuracy'] = accuracy
     
     return val_metrics
@@ -574,6 +822,14 @@ def train_model(config) -> None:
                 logger.info(f"  CSI CSV Avg - Train MAE: {train_metrics['csi_csv_avg_mae']:.4f}, Val MAE: {val_metrics['csi_csv_avg_mae']:.4f}")
                 logger.info(f"  CSI CSV Avg - Train RMSE: {train_metrics['csi_csv_avg_rmse']:.4f}, Val RMSE: {val_metrics['csi_csv_avg_rmse']:.4f}")
         
+        # Log AHF classification metrics
+        if 'ahf_accuracy' in train_metrics:
+            logger.info(f"  AHF Class - Train Acc: {train_metrics['ahf_accuracy']:.4f}, Val Acc: {val_metrics['ahf_accuracy']:.4f}")
+            logger.info(f"  AHF Class - Train F1: {train_metrics['ahf_f1_macro']:.4f}, Val F1: {val_metrics['ahf_f1_macro']:.4f}")
+            if 'ahf_csv_accuracy' in train_metrics:
+                logger.info(f"  AHF CSV - Train Acc: {train_metrics['ahf_csv_accuracy']:.4f}, Val Acc: {val_metrics['ahf_csv_accuracy']:.4f}")
+                logger.info(f"  AHF CSV - Train F1: {train_metrics['ahf_csv_f1_macro']:.4f}, Val F1: {val_metrics['ahf_csv_f1_macro']:.4f}")
+        
         logger.info(f"  Learning Rate: {current_lr:.6f}")
         
         # Log to wandb
@@ -627,6 +883,39 @@ def train_model(config) -> None:
                         "val_csi_csv_avg_rmse": val_metrics["csi_csv_avg_rmse"],
                         "train_csi_csv_avg_correlation": train_metrics["csi_csv_avg_correlation"],
                         "val_csi_csv_avg_correlation": val_metrics["csi_csv_avg_correlation"],
+                    })
+            
+            # Add AHF classification metrics
+            if 'ahf_accuracy' in train_metrics:
+                wandb_log.update({
+                    "train_ahf_accuracy": train_metrics["ahf_accuracy"],
+                    "val_ahf_accuracy": val_metrics["ahf_accuracy"],
+                    "train_ahf_f1_macro": train_metrics["ahf_f1_macro"],
+                    "val_ahf_f1_macro": val_metrics["ahf_f1_macro"],
+                    "train_ahf_f1_weighted": train_metrics["ahf_f1_weighted"],
+                    "val_ahf_f1_weighted": val_metrics["ahf_f1_weighted"],
+                    "train_ahf_f1_class_0": train_metrics["ahf_f1_class_0"],
+                    "val_ahf_f1_class_0": val_metrics["ahf_f1_class_0"],
+                    "train_ahf_f1_class_1": train_metrics["ahf_f1_class_1"],
+                    "val_ahf_f1_class_1": val_metrics["ahf_f1_class_1"],
+                    "train_ahf_f1_class_2": train_metrics["ahf_f1_class_2"],
+                    "val_ahf_f1_class_2": val_metrics["ahf_f1_class_2"],
+                })
+                
+                if 'ahf_csv_accuracy' in train_metrics:
+                    wandb_log.update({
+                        "train_ahf_csv_accuracy": train_metrics["ahf_csv_accuracy"],
+                        "val_ahf_csv_accuracy": val_metrics["ahf_csv_accuracy"],
+                        "train_ahf_csv_f1_macro": train_metrics["ahf_csv_f1_macro"],
+                        "val_ahf_csv_f1_macro": val_metrics["ahf_csv_f1_macro"],
+                        "train_ahf_csv_f1_weighted": train_metrics["ahf_csv_f1_weighted"],
+                        "val_ahf_csv_f1_weighted": val_metrics["ahf_csv_f1_weighted"],
+                        "train_ahf_csv_f1_class_0": train_metrics["ahf_csv_f1_class_0"],
+                        "val_ahf_csv_f1_class_0": val_metrics["ahf_csv_f1_class_0"],
+                        "train_ahf_csv_f1_class_1": train_metrics["ahf_csv_f1_class_1"],
+                        "val_ahf_csv_f1_class_1": val_metrics["ahf_csv_f1_class_1"],
+                        "train_ahf_csv_f1_class_2": train_metrics["ahf_csv_f1_class_2"],
+                        "val_ahf_csv_f1_class_2": val_metrics["ahf_csv_f1_class_2"],
                     })
             
             # Add per-zone metrics
@@ -708,6 +997,21 @@ def train_model(config) -> None:
             train_zone_precisions, val_zone_precisions,
             "precision", str(graphs_dir), run_name, epochs_list
         )
+        
+        # 6. Save AHF confusion matrices (using final epoch metrics)
+        logger.info("Generating AHF confusion matrices...")
+        try:
+            # Get the final epoch metrics for confusion matrix generation
+            final_train_metrics = train_metrics if 'train_metrics' in locals() else {}
+            final_val_metrics = val_metrics if 'val_metrics' in locals() else {}
+            
+            save_ahf_confusion_matrices(
+                final_train_metrics, final_val_metrics,
+                str(graphs_dir), run_name
+            )
+            logger.info("AHF confusion matrices saved successfully!")
+        except Exception as e:
+            logger.warning(f"Could not generate AHF confusion matrices: {e}")
         
         # 3. Save training history for evaluation dashboard
         logger.info("Saving training history...")
