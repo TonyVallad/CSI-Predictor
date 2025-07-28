@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 from tqdm import tqdm
 import wandb
+import pandas as pd
 
 from .config import cfg, get_config, copy_config_on_training_start
 from .data import create_data_loaders
@@ -142,13 +143,104 @@ def compute_precision_recall(predictions: torch.Tensor, targets: torch.Tensor) -
     return compute_precision_recall_metrics(predictions, targets, ignore_index=None)
 
 
+def compute_csi_average_metrics(predictions: torch.Tensor, targets: torch.Tensor, file_ids: Optional[list] = None, csv_data: Optional[pd.DataFrame] = None) -> Dict[str, float]:
+    """
+    Compute CSI average metrics by comparing predicted averages with ground truth averages from CSV.
+    
+    Args:
+        predictions: Model predictions [batch_size, n_zones, n_classes]
+        targets: Ground truth labels [batch_size, n_zones]
+        file_ids: List of file IDs for this batch (optional)
+        csv_data: DataFrame containing the original CSV data with 'csi' column (optional)
+        
+    Returns:
+        Dictionary with CSI average metrics
+    """
+    # Convert predictions to class indices
+    pred_classes = torch.argmax(predictions, dim=-1)  # [batch_size, n_zones]
+    
+    # Calculate predicted CSI averages (excluding unknown class 4)
+    pred_averages = []
+    target_averages = []
+    
+    for i in range(pred_classes.shape[0]):
+        # Get predictions and targets for this sample
+        sample_preds = pred_classes[i]  # [n_zones]
+        sample_targets = targets[i]     # [n_zones]
+        
+        # Calculate average excluding unknown class (4)
+        pred_valid_mask = sample_preds != 4
+        target_valid_mask = sample_targets != 4
+        
+        if pred_valid_mask.sum() > 0:
+            pred_avg = sample_preds[pred_valid_mask].float().mean().item()
+        else:
+            pred_avg = 0.0  # Default if all zones are unknown
+            
+        if target_valid_mask.sum() > 0:
+            target_avg = sample_targets[target_valid_mask].float().mean().item()
+        else:
+            target_avg = 0.0  # Default if all zones are unknown
+            
+        pred_averages.append(pred_avg)
+        target_averages.append(target_avg)
+    
+    # Convert to tensors for easier computation
+    pred_avg_tensor = torch.tensor(pred_averages)
+    target_avg_tensor = torch.tensor(target_averages)
+    
+    # Basic metrics
+    metrics = {
+        'csi_avg_pred_mean': pred_avg_tensor.mean().item(),
+        'csi_avg_target_mean': target_avg_tensor.mean().item(),
+        'csi_avg_mae': torch.abs(pred_avg_tensor - target_avg_tensor).mean().item(),
+        'csi_avg_rmse': torch.sqrt(torch.mean((pred_avg_tensor - target_avg_tensor) ** 2)).item(),
+        'csi_avg_correlation': torch.corrcoef(torch.stack([pred_avg_tensor, target_avg_tensor]))[0, 1].item() if len(pred_avg_tensor) > 1 else 0.0
+    }
+    
+    # Compare with CSV ground truth if available
+    if file_ids is not None and csv_data is not None:
+        csv_averages = []
+        valid_file_ids = []
+        
+        for file_id in file_ids:
+            if file_id in csv_data['FileID'].values:
+                csv_row = csv_data[csv_data['FileID'] == file_id].iloc[0]
+                if 'csi' in csv_row and pd.notna(csv_row['csi']):
+                    csv_averages.append(csv_row['csi'])
+                    valid_file_ids.append(file_id)
+        
+        if csv_averages:
+            csv_avg_tensor = torch.tensor(csv_averages)
+            # Get corresponding predicted averages for these file IDs
+            csv_pred_averages = []
+            for file_id in valid_file_ids:
+                if file_id in file_ids:
+                    idx = file_ids.index(file_id)
+                    csv_pred_averages.append(pred_averages[idx])
+            
+            if csv_pred_averages:
+                csv_pred_avg_tensor = torch.tensor(csv_pred_averages)
+                
+                metrics.update({
+                    'csi_csv_avg_pred_mean': csv_pred_avg_tensor.mean().item(),
+                    'csi_csv_avg_target_mean': csv_avg_tensor.mean().item(),
+                    'csi_csv_avg_mae': torch.abs(csv_pred_avg_tensor - csv_avg_tensor).mean().item(),
+                    'csi_csv_avg_rmse': torch.sqrt(torch.mean((csv_pred_avg_tensor - csv_avg_tensor) ** 2)).item(),
+                    'csi_csv_avg_correlation': torch.corrcoef(torch.stack([csv_pred_avg_tensor, csv_avg_tensor]))[0, 1].item() if len(csv_pred_avg_tensor) > 1 else 0.0
+                })
+    
+    return metrics
+
+
 def train_epoch(
     model: nn.Module,
     train_loader: DataLoader,
     criterion: nn.Module,
     optimizer: optim.Optimizer,
     device: torch.device,
-    epoch: int
+    epoch: int,
+    csv_data: Optional[pd.DataFrame] = None
 ) -> Dict[str, float]:
     """
     Train for one epoch.
@@ -169,6 +261,7 @@ def train_epoch(
     
     all_predictions = []
     all_targets = []
+    all_file_ids = []
     
     # Check if model supports zone masking
     is_zone_masking_model = hasattr(model, 'ZONE_MAPPING')
@@ -206,6 +299,8 @@ def train_epoch(
         # Store for F1 computation
         all_predictions.append(outputs.detach())
         all_targets.append(targets.detach())
+        if file_ids is not None:
+            all_file_ids.extend(file_ids)
         
         # Update progress bar
         progress_bar.set_postfix({"loss": f"{loss.item():.4f}"})
@@ -221,10 +316,18 @@ def train_epoch(
     valid_mask = all_target_tensor != 4  # Exclude ungradable samples
     accuracy = (pred_classes[valid_mask] == all_target_tensor[valid_mask]).float().mean().item()
     
+    # Compute CSI average metrics
+    csi_avg_metrics = compute_csi_average_metrics(
+        all_pred_tensor, all_target_tensor, 
+        file_ids=all_file_ids if all_file_ids else None,
+        csv_data=csv_data
+    )
+    
     # Combine metrics
     train_metrics = metrics.get_averages()
     train_metrics.update(f1_metrics)
     train_metrics.update(pr_metrics)
+    train_metrics.update(csi_avg_metrics)
     train_metrics['accuracy'] = accuracy
     
     return train_metrics
@@ -234,7 +337,8 @@ def validate_epoch(
     model: nn.Module,
     val_loader: DataLoader,
     criterion: nn.Module,
-    device: torch.device
+    device: torch.device,
+    csv_data: Optional[pd.DataFrame] = None
 ) -> Dict[str, float]:
     """
     Validate for one epoch.
@@ -253,6 +357,7 @@ def validate_epoch(
     
     all_predictions = []
     all_targets = []
+    all_file_ids = []
     
     # Check if model supports zone masking
     is_zone_masking_model = hasattr(model, 'ZONE_MAPPING')
@@ -283,6 +388,8 @@ def validate_epoch(
             # Store for F1 computation
             all_predictions.append(outputs)
             all_targets.append(targets)
+            if file_ids is not None:
+                all_file_ids.extend(file_ids)
     
     # Compute F1 metrics and accuracy
     all_pred_tensor = torch.cat(all_predictions, dim=0)
@@ -295,10 +402,18 @@ def validate_epoch(
     valid_mask = all_target_tensor != 4  # Exclude ungradable samples
     accuracy = (pred_classes[valid_mask] == all_target_tensor[valid_mask]).float().mean().item()
     
+    # Compute CSI average metrics
+    csi_avg_metrics = compute_csi_average_metrics(
+        all_pred_tensor, all_target_tensor, 
+        file_ids=all_file_ids if all_file_ids else None,
+        csv_data=csv_data
+    )
+    
     # Combine metrics
     val_metrics = metrics.get_averages()
     val_metrics.update(f1_metrics)
     val_metrics.update(pr_metrics)
+    val_metrics.update(csi_avg_metrics)
     val_metrics['accuracy'] = accuracy
     
     return val_metrics
@@ -324,6 +439,18 @@ def train_model(config) -> None:
     # Create data loaders
     train_loader, val_loader, _ = create_data_loaders(config)
     logger.info(f"Created data loaders: train={len(train_loader)}, val={len(val_loader)}")
+    
+    # Load CSV data for CSI average comparison
+    csv_data = None
+    try:
+        from .data import load_csv_data, convert_nans_to_unknown
+        csv_path = os.path.join(config.csv_dir, config.labels_csv)
+        csv_data = load_csv_data(csv_path)
+        csv_data = convert_nans_to_unknown(csv_data)
+        logger.info(f"Loaded CSV data with {len(csv_data)} samples for CSI average comparison")
+    except Exception as e:
+        logger.warning(f"Could not load CSV data for CSI average comparison: {e}")
+        logger.info("CSI average metrics will be computed without CSV ground truth comparison")
     
     # Build model
     model = build_model(config)
@@ -406,10 +533,10 @@ def train_model(config) -> None:
         logger.info(f"Starting epoch {epoch}/{config.n_epochs}")
         
         # Train
-        train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, epoch)
+        train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, epoch, csv_data)
         
         # Validate
-        val_metrics = validate_epoch(model, val_loader, criterion, device)
+        val_metrics = validate_epoch(model, val_loader, criterion, device, csv_data)
         
         # Update scheduler
         scheduler.step(val_metrics["loss"])
@@ -438,6 +565,15 @@ def train_model(config) -> None:
         logger.info(f"Epoch {epoch}:")
         logger.info(f"  Train - Loss: {train_metrics['loss']:.4f}, F1 Macro: {train_metrics['f1_macro']:.4f}, Accuracy: {train_metrics['accuracy']:.4f}")
         logger.info(f"  Val   - Loss: {val_metrics['loss']:.4f}, F1 Macro: {val_metrics['f1_macro']:.4f}, Accuracy: {val_metrics['accuracy']:.4f}")
+        
+        # Log CSI average metrics
+        if 'csi_avg_mae' in train_metrics:
+            logger.info(f"  CSI Avg - Train MAE: {train_metrics['csi_avg_mae']:.4f}, Val MAE: {val_metrics['csi_avg_mae']:.4f}")
+            logger.info(f"  CSI Avg - Train RMSE: {train_metrics['csi_avg_rmse']:.4f}, Val RMSE: {val_metrics['csi_avg_rmse']:.4f}")
+            if 'csi_csv_avg_mae' in train_metrics:
+                logger.info(f"  CSI CSV Avg - Train MAE: {train_metrics['csi_csv_avg_mae']:.4f}, Val MAE: {val_metrics['csi_csv_avg_mae']:.4f}")
+                logger.info(f"  CSI CSV Avg - Train RMSE: {train_metrics['csi_csv_avg_rmse']:.4f}, Val RMSE: {val_metrics['csi_csv_avg_rmse']:.4f}")
+        
         logger.info(f"  Learning Rate: {current_lr:.6f}")
         
         # Log to wandb
@@ -471,6 +607,27 @@ def train_model(config) -> None:
                 "train_recall_overall": train_metrics["recall_overall"],
                 "val_recall_overall": val_metrics["recall_overall"]
             }
+            
+            # Add CSI average metrics
+            if 'csi_avg_mae' in train_metrics:
+                wandb_log.update({
+                    "train_csi_avg_mae": train_metrics["csi_avg_mae"],
+                    "val_csi_avg_mae": val_metrics["csi_avg_mae"],
+                    "train_csi_avg_rmse": train_metrics["csi_avg_rmse"],
+                    "val_csi_avg_rmse": val_metrics["csi_avg_rmse"],
+                    "train_csi_avg_correlation": train_metrics["csi_avg_correlation"],
+                    "val_csi_avg_correlation": val_metrics["csi_avg_correlation"],
+                })
+                
+                if 'csi_csv_avg_mae' in train_metrics:
+                    wandb_log.update({
+                        "train_csi_csv_avg_mae": train_metrics["csi_csv_avg_mae"],
+                        "val_csi_csv_avg_mae": val_metrics["csi_csv_avg_mae"],
+                        "train_csi_csv_avg_rmse": train_metrics["csi_csv_avg_rmse"],
+                        "val_csi_csv_avg_rmse": val_metrics["csi_csv_avg_rmse"],
+                        "train_csi_csv_avg_correlation": train_metrics["csi_csv_avg_correlation"],
+                        "val_csi_csv_avg_correlation": val_metrics["csi_csv_avg_correlation"],
+                    })
             
             # Add per-zone metrics
             for i in range(6):
