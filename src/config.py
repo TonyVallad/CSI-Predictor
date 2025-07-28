@@ -106,6 +106,8 @@ class Config:
     patience: int = 10
     learning_rate: float = 0.001
     optimizer: str = "adam"
+    dropout_rate: float = 0.5
+    weight_decay: float = 0.01
     
     # Model Configuration
     model_arch: str = "resnet50"
@@ -422,6 +424,8 @@ class ConfigLoader:
             patience=self.get_config_value("PATIENCE", 10, int),
             learning_rate=self.get_config_value("LEARNING_RATE", 0.001, float),
             optimizer=self.get_config_value("OPTIMIZER", "adam", str),
+            dropout_rate=self.get_config_value("DROPOUT_RATE", 0.5, float),
+            weight_decay=self.get_config_value("WEIGHT_DECAY", 0.01, float),
             
             # Model Configuration
             model_arch=self.get_config_value("MODEL_ARCH", "resnet50", str),

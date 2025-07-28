@@ -16,13 +16,14 @@ class CSIHead(nn.Module):
     where each zone can have scores from 0-4 (5 classes total).
     """
     
-    def __init__(self, backbone_out_dim: int, n_classes_per_zone: int = 5):
+    def __init__(self, backbone_out_dim: int, n_classes_per_zone: int = 5, dropout_rate: float = 0.5):
         """
         Initialize CSI classification head.
         
         Args:
             backbone_out_dim: Output dimension from backbone network
             n_classes_per_zone: Number of classes per zone (default: 5 for scores 0-4)
+            dropout_rate: Dropout rate for regularization (default: 0.5)
         """
         super().__init__()
         
@@ -36,8 +37,8 @@ class CSIHead(nn.Module):
             for _ in range(self.n_zones)
         ])
         
-        # Optional: Add dropout for regularization
-        self.dropout = nn.Dropout(p=0.5)
+        # Add dropout for regularization with configurable rate
+        self.dropout = nn.Dropout(p=dropout_rate)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

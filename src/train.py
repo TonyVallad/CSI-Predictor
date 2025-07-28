@@ -873,11 +873,11 @@ def train_model(config) -> None:
     # Create optimizer
     optimizer_name = config.optimizer.lower()
     if optimizer_name == "adam":
-        optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
+        optimizer = optim.Adam(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
     elif optimizer_name == "adamw":
-        optimizer = optim.AdamW(model.parameters(), lr=config.learning_rate, weight_decay=0.01)
+        optimizer = optim.AdamW(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
     elif optimizer_name == "sgd":
-        optimizer = optim.SGD(model.parameters(), lr=config.learning_rate, momentum=0.9)
+        optimizer = optim.SGD(model.parameters(), lr=config.learning_rate, momentum=0.9, weight_decay=config.weight_decay)
     else:
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
     

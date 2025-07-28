@@ -20,7 +20,7 @@ from .head import CSIHead
 class CSIModel(nn.Module):
     """Complete CSI prediction model with backbone + head."""
     
-    def __init__(self, backbone_arch: str, n_classes_per_zone: int = 5, pretrained: bool = True):
+    def __init__(self, backbone_arch: str, n_classes_per_zone: int = 5, pretrained: bool = True, dropout_rate: float = 0.5):
         """
         Initialize CSI model.
         
@@ -28,6 +28,7 @@ class CSIModel(nn.Module):
             backbone_arch: Backbone architecture name
             n_classes_per_zone: Number of classes per zone (default: 5)
             pretrained: Use pretrained backbone
+            dropout_rate: Dropout rate for regularization (default: 0.5)
         """
         super().__init__()
         
@@ -37,8 +38,8 @@ class CSIModel(nn.Module):
         # Get backbone feature dimension
         backbone_out_dim = get_backbone_feature_dim(backbone_arch)
         
-        # Create CSI head
-        self.head = CSIHead(backbone_out_dim, n_classes_per_zone)
+        # Create CSI head with configurable dropout
+        self.head = CSIHead(backbone_out_dim, n_classes_per_zone, dropout_rate)
         
         # Store metadata
         self.backbone_arch = backbone_arch
@@ -407,7 +408,8 @@ def build_model(cfg, use_zone_focus: bool = None) -> nn.Module:
         model = CSIModel(
             backbone_arch=cfg.model_arch,
             n_classes_per_zone=5,  # CSI scores: 0, 1, 2, 3, 4
-            pretrained=True
+            pretrained=True,
+            dropout_rate=cfg.dropout_rate
         )
     
     # Move to device
