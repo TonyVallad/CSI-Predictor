@@ -37,7 +37,7 @@ class CSIHead(nn.Module):
         ])
         
         # Optional: Add dropout for regularization
-        self.dropout = nn.Dropout(p=0.1)
+        self.dropout = nn.Dropout(p=0.5)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -82,10 +82,10 @@ class CSIRegressionHead(nn.Module):
         super().__init__()
         
         self.head = nn.Sequential(
-            nn.Dropout(0.1),
+            nn.Dropout(0.5),
             nn.Linear(input_dim, 512),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            nn.Dropout(0.5),
             nn.Linear(512, 256),
             nn.ReLU(),
             nn.Linear(256, num_zones)

@@ -121,7 +121,7 @@ class CSIModelWithZoneMasking(nn.Module):
                 nn.Sequential(
                     nn.Linear(backbone_out_dim, backbone_out_dim // 2),
                     nn.ReLU(),
-                    nn.Dropout(0.1),
+                    nn.Dropout(0.5),
                     nn.Linear(backbone_out_dim // 2, backbone_out_dim // 4)
                 ) for _ in range(6)
             ])
