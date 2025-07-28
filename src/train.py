@@ -465,6 +465,103 @@ def save_ahf_confusion_matrices(train_metrics: Dict[str, Any], val_metrics: Dict
         plt.close()
 
 
+def create_results_analysis_csv(predictions: torch.Tensor, targets: torch.Tensor, file_ids: list, 
+                               csv_data: pd.DataFrame, split_name: str, config) -> None:
+    """
+    Create a results analysis CSV with detailed comparison between predictions and ground truth.
+    
+    Args:
+        predictions: Model predictions [batch_size, n_zones, n_classes]
+        targets: Ground truth labels [batch_size, n_zones]
+        file_ids: List of file IDs for this batch
+        csv_data: DataFrame containing the original CSV data with 'csi' column
+        split_name: Name of the split ('train' or 'validation')
+        config: Configuration object for paths
+    """
+    import pandas as pd
+    from pathlib import Path
+    
+    # Convert predictions to class indices
+    pred_classes = torch.argmax(predictions, dim=-1)  # [batch_size, n_zones]
+    
+    def calculate_ahf_class(avg_csi: float) -> int:
+        """Calculate AHF class based on average CSI."""
+        if avg_csi <= 1.3:
+            return 0
+        elif avg_csi <= 2.2:
+            return 1
+        else:
+            return 2
+    
+    # Prepare data for CSV
+    results_data = []
+    
+    for i in range(pred_classes.shape[0]):
+        file_id = file_ids[i] if i < len(file_ids) else f"unknown_{i}"
+        
+        # Get predictions and targets for this sample
+        sample_preds = pred_classes[i]  # [n_zones]
+        sample_targets = targets[i]     # [n_zones]
+        
+        # Calculate predicted CSI average (excluding unknown class 4)
+        pred_valid_mask = sample_preds != 4
+        if pred_valid_mask.sum() > 0:
+            csi_avg = sample_preds[pred_valid_mask].float().mean().item()
+        else:
+            csi_avg = 0.0  # Default if all zones are unknown
+        
+        # Calculate target CSI average (excluding unknown class 4)
+        target_valid_mask = sample_targets != 4
+        if target_valid_mask.sum() > 0:
+            csi_avg_gt = sample_targets[target_valid_mask].float().mean().item()
+        else:
+            csi_avg_gt = 0.0  # Default if all zones are unknown
+        
+        # Calculate AHF risk from predictions
+        ahf_risk = calculate_ahf_class(csi_avg)
+        
+        # Get CSV ground truth values
+        csi_avg_gt_csv = None
+        ahf_risk_gt = None
+        
+        if file_id in csv_data['FileID'].values:
+            csv_row = csv_data[csv_data['FileID'] == file_id].iloc[0]
+            if 'csi' in csv_row and pd.notna(csv_row['csi']):
+                csi_avg_gt_csv = csv_row['csi']
+                ahf_risk_gt = calculate_ahf_class(csi_avg_gt_csv)
+        
+        # Calculate differences
+        csi_avg_dif = csi_avg_gt_csv - csi_avg if csi_avg_gt_csv is not None else None
+        ahf_risk_dif = ahf_risk_gt - ahf_risk if ahf_risk_gt is not None else None
+        
+        # Add to results
+        results_data.append({
+            'FileID': file_id,
+            'CSI_avg': csi_avg,
+            'CSI_avg_GT': csi_avg_gt_csv,
+            'CSI_avg_dif': csi_avg_dif,
+            'AHF_Risk': ahf_risk,
+            'AHF_Risk_GT': ahf_risk_gt,
+            'AHF_Risk_dif': ahf_risk_dif
+        })
+    
+    # Create DataFrame
+    results_df = pd.DataFrame(results_data)
+    
+    # Create results subfolder
+    results_dir = Path(config.csv_dir) / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save CSV
+    csv_filename = f"results_analysis_{split_name}.csv"
+    csv_path = results_dir / csv_filename
+    results_df.to_csv(csv_path, index=False)
+    
+    logger.info(f"Results analysis CSV saved: {csv_path}")
+    logger.info(f"  - {len(results_df)} samples analyzed")
+    logger.info(f"  - {results_df['CSI_avg_GT'].notna().sum()} samples with CSV ground truth")
+
+
 def train_epoch(
     model: nn.Module,
     train_loader: DataLoader,
@@ -472,7 +569,8 @@ def train_epoch(
     optimizer: optim.Optimizer,
     device: torch.device,
     epoch: int,
-    csv_data: Optional[pd.DataFrame] = None
+    csv_data: Optional[pd.DataFrame] = None,
+    config = None
 ) -> Dict[str, float]:
     """
     Train for one epoch.
@@ -562,6 +660,16 @@ def train_epoch(
         csv_data=csv_data
     )
     
+    # Create results analysis CSV for training
+    if csv_data is not None and all_file_ids:
+        try:
+            create_results_analysis_csv(
+                all_pred_tensor, all_target_tensor, 
+                all_file_ids, csv_data, "train", config
+            )
+        except Exception as e:
+            logger.warning(f"Could not create training results analysis CSV: {e}")
+    
     # Combine metrics
     train_metrics = metrics.get_averages()
     train_metrics.update(f1_metrics)
@@ -578,7 +686,8 @@ def validate_epoch(
     val_loader: DataLoader,
     criterion: nn.Module,
     device: torch.device,
-    csv_data: Optional[pd.DataFrame] = None
+    csv_data: Optional[pd.DataFrame] = None,
+    config = None
 ) -> Dict[str, float]:
     """
     Validate for one epoch.
@@ -655,6 +764,16 @@ def validate_epoch(
         file_ids=all_file_ids if all_file_ids else None,
         csv_data=csv_data
     )
+    
+    # Create results analysis CSV for validation
+    if csv_data is not None and all_file_ids:
+        try:
+            create_results_analysis_csv(
+                all_pred_tensor, all_target_tensor, 
+                all_file_ids, csv_data, "validation", config
+            )
+        except Exception as e:
+            logger.warning(f"Could not create validation results analysis CSV: {e}")
     
     # Combine metrics
     val_metrics = metrics.get_averages()
@@ -781,10 +900,10 @@ def train_model(config) -> None:
         logger.info(f"Starting epoch {epoch}/{config.n_epochs}")
         
         # Train
-        train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, epoch, csv_data)
+        train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, epoch, csv_data, config)
         
         # Validate
-        val_metrics = validate_epoch(model, val_loader, criterion, device, csv_data)
+        val_metrics = validate_epoch(model, val_loader, criterion, device, csv_data, config)
         
         # Update scheduler
         scheduler.step(val_metrics["loss"])
