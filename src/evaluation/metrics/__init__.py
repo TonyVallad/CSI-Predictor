@@ -8,14 +8,15 @@ This package contains all metrics computation functionality including:
 """
 
 from .evaluation_metrics import compute_confusion_matrices_per_zone, create_classification_report_per_zone
-from .classification import compute_classification_metrics
+from .classification import compute_accuracy, compute_precision_recall_metrics
 from .f1_score import compute_f1_score, compute_f1_scores_per_class
 from .confusion_matrix import create_confusion_matrix
 
 __all__ = [
     'compute_confusion_matrices_per_zone',
     'create_classification_report_per_zone',
-    'compute_classification_metrics',
+    'compute_accuracy',
+    'compute_precision_recall_metrics',
     'compute_f1_score',
     'compute_f1_scores_per_class',
     'create_confusion_matrix'
