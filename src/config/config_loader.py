@@ -235,12 +235,7 @@ class ConfigLoader:
             # Normalization Strategy Configuration
             normalization_strategy=self.get_config_value("NORMALIZATION_STRATEGY", "medical", str),
             custom_mean=self.get_config_value("CUSTOM_MEAN", None, list),
-            custom_std=self.get_config_value("CUSTOM_STD", None, list),
-            
-            # Internal fields
-            _env_vars=self._env_vars,
-            _ini_vars=self._ini_vars,
-            _missing_keys=self._missing_keys
+            custom_std=self.get_config_value("CUSTOM_STD", None, list)
         )
         
         # Log missing keys
