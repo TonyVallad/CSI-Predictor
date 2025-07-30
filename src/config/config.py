@@ -73,6 +73,7 @@ class Config:
     graph_dir: str = "./graphs"  # Directory for saving graphs and visualizations
     debug_dir: str = "./debug_output"  # Directory for debug visualizations
     logs_dir: str = "./logs"  # Directory for saving logs and training history
+    output_dir: str = "./evaluation_output"  # Directory for evaluation outputs
     
     # Labels configuration
     labels_csv: str = "Labeled_Data_RAW.csv"
@@ -129,6 +130,11 @@ class Config:
     def models_folder(self) -> str:
         """Get models directory path."""
         return self.models_dir
+    
+    @property
+    def model_path(self) -> str:
+        """Get path to the final trained model."""
+        return os.path.join(self.models_dir, "final_model.pth")
     
     def get_model_path(self, model_name: str, extension: str = "pth") -> str:
         """
