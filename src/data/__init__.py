@@ -12,7 +12,7 @@ This package contains all data-related functionality including:
 from .preprocessing import get_normalization_parameters, CSI_COLUMNS, CSI_UNKNOWN_CLASS
 from .dataloader import create_data_loaders
 from .dataset import CSIDataset
-from .transforms import get_transforms
+from .transforms import get_default_transforms
 from .splitting import split_data_stratified
 
 __all__ = [
@@ -21,7 +21,7 @@ __all__ = [
     'CSI_UNKNOWN_CLASS',
     'create_data_loaders',
     'CSIDataset',
-    'get_transforms',
+    'get_default_transforms',
     'split_data_stratified'
 ]
 
