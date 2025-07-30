@@ -20,7 +20,7 @@ try:
     
     # Then try to import RadDINO implementation
     try:
-        from ..rad_dino import RadDINOBackboneOnly
+        from ..complete.rad_dino import RadDINOBackboneOnly
         RADDINO_AVAILABLE = True
         logger.debug("RadDINO backbone is available (all dependencies found)")
     except ImportError as rad_dino_error:
@@ -85,11 +85,11 @@ def diagnose_raddino_availability():
     
     # Check RadDINO implementation
     try:
-        from ..rad_dino import RadDINOBackboneOnly
+        from ..complete.rad_dino import RadDINOBackboneOnly
         diagnosis['raddino_available'] = True
     except ImportError as e:
         diagnosis['raddino_error'] = str(e)
-        diagnosis['recommendations'].append("Check RadDINO implementation in src/models/rad_dino.py")
+        diagnosis['recommendations'].append("Check RadDINO implementation in src/models/complete/rad_dino.py")
     
     return diagnosis
 
