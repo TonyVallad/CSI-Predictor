@@ -63,7 +63,7 @@ def validate_config(config: Config) -> None:
         errors.append(f"Invalid optimizer: {config.optimizer}. Must be one of {valid_optimizers}")
     
     # Validate model architecture
-    valid_architectures = ["resnet50", "densenet121", "custom_cnn", "raddino"]
+    valid_architectures = ["resnet50", "densenet121", "chexnet", "custom_cnn", "raddino"]
     if config.model_arch.lower() not in valid_architectures:
         errors.append(f"Invalid model_arch: {config.model_arch}. Must be one of {valid_architectures}")
     

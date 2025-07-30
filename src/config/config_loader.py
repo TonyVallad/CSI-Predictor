@@ -79,7 +79,9 @@ class ConfigLoader:
             for section_name, section in config.items():
                 if section_name != 'DEFAULT':  # Skip DEFAULT section
                     for key, value in section.items():
-                        ini_vars[key.upper()] = value
+                        # Strip comments from values (everything after #)
+                        clean_value = value.split('#')[0].strip()
+                        ini_vars[key.upper()] = clean_value
             
             self._ini_vars = ini_vars
             logger.debug(f"Loaded {len(self._ini_vars)} configuration values from INI file")

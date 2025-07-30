@@ -30,6 +30,7 @@ def get_backbone(backbone_arch: str, pretrained: bool = True):
         'densenet121': CheXNetBackbone,
         'chexnet': CheXNetBackbone,
         'custom': CustomCNNBackbone,
+        'custom_cnn': CustomCNNBackbone,
         'raddino': RadDINOBackbone,
     }
     
@@ -53,6 +54,7 @@ def get_backbone_feature_dim(backbone_arch: str) -> int:
         'densenet121': 1024,
         'chexnet': 1024,
         'custom': 512,
+        'custom_cnn': 512,
         'raddino': 768,  # RadDINO typically uses 768
     }
     
