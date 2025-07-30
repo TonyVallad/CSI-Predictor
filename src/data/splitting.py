@@ -6,7 +6,7 @@ This module contains data splitting functionality extracted from the original sr
 
 import pandas as pd
 from typing import Tuple
-from ..data_split import pytorch_train_val_test_split, pytorch_train_test_split
+from .data_split import pytorch_train_val_test_split, pytorch_train_test_split
 
 # CSI zone column names (6 zones)
 CSI_COLUMNS = ['right_sup', 'left_sup', 'right_mid', 'left_mid', 'right_inf', 'left_inf']
