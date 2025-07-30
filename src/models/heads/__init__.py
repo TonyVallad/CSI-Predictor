@@ -7,11 +7,11 @@ This package contains all classification and regression head implementations inc
 """
 
 from .csi_head import CSIHead
-from .regression_head import RegressionHead
+from .regression_head import CSIRegressionHead
 
 __all__ = [
     'CSIHead',
-    'RegressionHead'
+    'CSIRegressionHead'
 ]
 
 __version__ = "1.0.0"
