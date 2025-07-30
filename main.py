@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 from loguru import logger
 
 from src.config import cfg, copy_config_on_training_start
-from src.train import train_model
-from src.evaluate import evaluate_model
+from src.training.trainer import train_model
+from src.evaluation.evaluator import evaluate_model
 
 
 def main():
@@ -20,7 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description="CSI-Predictor: Predict 6-zone CSI scores on chest X-rays")
     parser.add_argument("--mode", choices=["train", "eval", "both", "hyperopt", "train-optimized", "sweep", "sweep-agent"], default="both",
                         help="Run mode: train, eval, both, hyperopt (Optuna), train-optimized, sweep (W&B Sweeps), or sweep-agent")
-    parser.add_argument("--config", default="config.ini", help="Path to config.ini file")
+    parser.add_argument("--config", default="config/config.ini", help="Path to config.ini file")
     parser.add_argument("--env", default=".env", help="Path to .env file")
     
     # Hyperparameter optimization specific arguments (Optuna)
@@ -63,7 +63,7 @@ def main():
     
     if args.mode == "hyperopt":
         logger.info("Starting hyperparameter optimization...")
-        from src.hyperopt import optimize_hyperparameters
+        from src.optimization.hyperopt import optimize_hyperparameters
         
         # Handle WandB project configuration
         wandb_project = args.wandb_project if args.wandb_project.lower() != 'none' else None
@@ -103,7 +103,7 @@ def main():
             return
         
         logger.info("Training with optimized hyperparameters...")
-        from src.train_optimized import train_with_optimized_hyperparameters
+        from src.training.train_optimized import train_with_optimized_hyperparameters
         
         train_with_optimized_hyperparameters(
             hyperparams_path=args.hyperparams,
@@ -114,7 +114,7 @@ def main():
         
     elif args.mode == "sweep":
         logger.info("Starting W&B Sweep...")
-        from src.wandb_sweep import initialize_sweep
+        from src.optimization.wandb_sweep import initialize_sweep
         
         sweep_id = initialize_sweep(
             project=args.sweep_project,
@@ -143,7 +143,7 @@ def main():
             return
         
         logger.info("Starting W&B Sweep Agent...")
-        from src.wandb_sweep import run_sweep_agent
+        from src.optimization.wandb_sweep import run_sweep_agent
         
         run_sweep_agent(
             sweep_id=args.sweep_id,
