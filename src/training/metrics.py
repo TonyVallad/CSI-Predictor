@@ -37,8 +37,7 @@ def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict
         'f1_macro': enhanced_metrics['f1_macro'],
         'f1_weighted_macro': enhanced_metrics['f1_weighted_macro'],
         'f1_overall': enhanced_metrics['f1_overall'],
-        'f1_overall_weighted': enhanced_metrics['f1_overall_weighted'],
-        'f1_overall_micro': enhanced_metrics['f1_overall_micro'],
+        'f1_overall_weighted': enhanced_metrics['f1_weighted_overall'],  # Correct key name
         # Keep individual zone metrics
         **{k: v for k, v in enhanced_metrics.items() if k.startswith('f1_zone_')}
     }
