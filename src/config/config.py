@@ -72,6 +72,7 @@ class Config:
     ini_dir: str = "./config/"
     graph_dir: str = "./graphs"  # Directory for saving graphs and visualizations
     debug_dir: str = "./debug_output"  # Directory for debug visualizations
+    logs_dir: str = "./logs"  # Directory for saving logs and training history
     
     # Labels configuration
     labels_csv: str = "Labeled_Data_RAW.csv"
