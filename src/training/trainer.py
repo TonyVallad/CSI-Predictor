@@ -357,13 +357,13 @@ def train_model(config: Config) -> None:
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]
             model_path = os.path.join(config.models_dir, f"best_model_epoch_{epoch}.pth")
-            save_checkpoint(model, optimizer, epoch, val_metrics["loss"], model_path)
+            save_checkpoint(model, optimizer, epoch, val_metrics["loss"], model_path, config=config)
             logger.info(f"Saved best model (loss) to {model_path}")
         
         if val_metrics["f1_macro"] > best_val_f1:
             best_val_f1 = val_metrics["f1_macro"]
             model_path = os.path.join(config.models_dir, f"best_f1_model_epoch_{epoch}.pth")
-            save_checkpoint(model, optimizer, epoch, val_metrics["f1_macro"], model_path)
+            save_checkpoint(model, optimizer, epoch, val_metrics["f1_macro"], model_path, config=config)
             logger.info(f"Saved best model (F1) to {model_path}")
         
         # Check early stopping
@@ -373,7 +373,7 @@ def train_model(config: Config) -> None:
     
     # Save final model
     final_model_path = os.path.join(config.models_dir, "final_model.pth")
-    save_checkpoint(model, optimizer, config.n_epochs, val_metrics["loss"], final_model_path)
+    save_checkpoint(model, optimizer, config.n_epochs, val_metrics["loss"], final_model_path, config=config)
     logger.info(f"Saved final model to {final_model_path}")
     
     # Save training history

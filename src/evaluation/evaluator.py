@@ -20,13 +20,14 @@ from .metrics import compute_confusion_matrices_per_zone, create_classification_
 from .visualization import save_confusion_matrix_graphs
 from .wandb_logging import log_to_wandb
 
-def load_trained_model(model_path: str, device: torch.device):
+def load_trained_model(model_path: str, device: torch.device, fallback_config=None):
     """
     Load trained model from checkpoint with automatic architecture detection.
     
     Args:
         model_path: Path to model checkpoint
         device: Device to load model on
+        fallback_config: Fallback configuration if checkpoint doesn't contain config
         
     Returns:
         Loaded CSI model (either CSIModel or CSIModelWithZoneMasking)
@@ -36,7 +37,10 @@ def load_trained_model(model_path: str, device: torch.device):
     # Get model architecture from config
     config = checkpoint.get('config')
     if config is None:
-        raise ValueError("Model checkpoint missing configuration information")
+        if fallback_config is None:
+            raise ValueError("Model checkpoint missing configuration information and no fallback config provided")
+        logger.warning("Model checkpoint missing configuration information, using fallback config")
+        config = fallback_config
     
     # Check state dict keys to detect model architecture
     state_dict_keys = set(checkpoint['model_state_dict'].keys())
@@ -291,7 +295,7 @@ def evaluate_model(config) -> None:
     logger.info(f"Using device: {device}")
     
     # Load model
-    model = load_trained_model(config.model_path, device)
+    model = load_trained_model(config.model_path, device, fallback_config=config)
     
     # Create data loaders
     from ..data.dataloader import create_data_loaders
