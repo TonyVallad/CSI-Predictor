@@ -367,5 +367,61 @@ def get_search_space_info() -> Dict[str, Any]:
         'attention_strength': {'type': 'float', 'range': [0.3, 0.9]},
     }
 
+def optimize_hyperparameters(
+    study_name: str,
+    n_trials: int = 100,
+    max_epochs: int = 50,
+    config_path: Optional[str] = None,
+    sampler: str = 'tpe',
+    pruner: str = 'median',
+    wandb_project: Optional[str] = None
+) -> optuna.Study:
+    """
+    Main function to run hyperparameter optimization.
+    
+    Args:
+        study_name: Name of the study
+        n_trials: Number of trials to run
+        max_epochs: Maximum epochs per trial
+        config_path: Path to configuration file
+        sampler: Sampler name ('tpe', 'random', 'cmaes')
+        pruner: Pruner name ('median', 'successive_halving')
+        wandb_project: WandB project name for logging
+        
+    Returns:
+        Optuna study object
+    """
+    # Load base configuration
+    if config_path:
+        from src.config import get_config
+        base_config = get_config(ini_path=config_path)
+    else:
+        from src.config import cfg
+        base_config = cfg
+    
+    # Create study
+    study = create_study(
+        study_name=study_name,
+        sampler_name=sampler,
+        pruner_name=pruner,
+        direction='maximize'
+    )
+    
+    # Run optimization
+    study.optimize(
+        lambda trial: objective(trial, base_config, max_epochs),
+        n_trials=n_trials,
+        show_progress_bar=True
+    )
+    
+    # Save best hyperparameters
+    output_path = f"models/hyperopt/{study_name}_best_params.json"
+    save_best_hyperparameters(study, output_path)
+    
+    logger.info(f"Optimization completed. Best value: {study.best_value}")
+    logger.info(f"Best hyperparameters saved to: {output_path}")
+    
+    return study
+
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 
