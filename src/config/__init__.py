@@ -18,7 +18,7 @@ from .validation import validate_config, validate_paths, validate_file_permissio
 # Singleton instance
 _config_instance: Optional[Config] = None
 
-def get_config(env_path: str = ".env", ini_path: str = "config.ini", force_reload: bool = False) -> Config:
+def get_config(env_path: str = ".env", ini_path: str = "config/config.ini", force_reload: bool = False) -> Config:
     """
     Get singleton configuration instance.
     

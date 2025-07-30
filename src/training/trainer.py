@@ -23,7 +23,8 @@ from src.models import build_model
 from src.utils.seed import seed_everything
 from src.utils.logging import logger
 from src.utils.file_utils import create_dirs
-from src.utils.visualization import plot_training_curves, plot_training_curves_grid, create_summary_dashboard, save_training_history
+from src.evaluation.visualization.plots import plot_training_curves
+from src.utils.file_utils import save_training_history
 from src.utils.checkpoint import save_checkpoint
 from src.utils.discord_notifier import send_training_notification
 from .loss import WeightedCSILoss
