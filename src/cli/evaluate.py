@@ -7,8 +7,8 @@ This module contains evaluation CLI functionality extracted from the original ma
 import argparse
 from loguru import logger
 
-from ..config import cfg
-from ..evaluation.evaluator import evaluate_model
+from src.config import cfg
+from src.evaluation.evaluator import evaluate_model
 
 def evaluate_cli(args):
     """

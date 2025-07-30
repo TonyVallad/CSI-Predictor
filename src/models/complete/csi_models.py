@@ -12,7 +12,7 @@ import cv2
 import os
 from pathlib import Path
 from typing import Optional, Tuple
-from ...utils.logging import logger
+from src.utils.logging import logger
 from ..backbones import get_backbone, get_backbone_feature_dim
 from ..heads import CSIHead
 

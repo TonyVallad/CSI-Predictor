@@ -16,13 +16,13 @@ from typing import Dict, Any
 import torch
 import torch.optim as optim
 
-from ..config import Config, get_config
-from ..data.dataloader import create_data_loaders
-from ..models.factory import build_model
+from src.config import Config, get_config
+from src.data.dataloader import create_data_loaders
+from src.models.factory import build_model
 from .loss import WeightedCSILoss
 from .trainer import train_model
-from ..utils.logging import logger
-from ..utils.seed import seed_everything
+from src.utils.logging import logger
+from src.utils.seed import seed_everything
 
 
 def load_best_hyperparameters(hyperparams_path: str) -> Dict[str, Any]:

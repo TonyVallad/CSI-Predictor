@@ -7,8 +7,8 @@ This module contains optimization CLI functionality extracted from the original 
 import argparse
 from loguru import logger
 
-from ..optimization.hyperopt import optimize_hyperparameters
-from ..optimization.wandb_sweep import initialize_sweep, run_sweep_agent
+from src.optimization.hyperopt import optimize_hyperparameters
+from src.optimization.wandb_sweep import initialize_sweep, run_sweep_agent
 
 def optimize_cli(args, mode="hyperopt"):
     """

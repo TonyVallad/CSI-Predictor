@@ -7,7 +7,7 @@ This module contains configuration validation functionality extracted from the o
 import os
 from pathlib import Path
 from typing import Any
-from ...utils.logging import logger
+from src.utils.logging import logger
 from .config import Config
 
 def validate_config(config: Config) -> None:

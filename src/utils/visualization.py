@@ -36,11 +36,11 @@ def show_batch(
     """
     # Import here to avoid circular imports
     if config is None:
-        from ..config import cfg
+        from src.config import cfg
         config = cfg
     
     # Get normalization parameters
-    from ..data import get_normalization_parameters
+    from src.data import get_normalization_parameters
     mean, std = get_normalization_parameters(config)
     
     # Get a batch from the data loader
@@ -178,7 +178,7 @@ def visualize_data_distribution(
         save_path: Path to save the figure (optional)
     """
     # CSI zone columns
-    from ..data import CSI_COLUMNS
+    from src.data import CSI_COLUMNS
     
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     axes = axes.flatten()
@@ -240,7 +240,7 @@ def analyze_missing_data(df: pd.DataFrame) -> Dict[str, Any]:
     Returns:
         Dictionary with missing data statistics
     """
-    from ..data import CSI_COLUMNS, CSI_UNKNOWN_CLASS
+    from src.data import CSI_COLUMNS, CSI_UNKNOWN_CLASS
     
     analysis = {
         'total_samples': len(df),

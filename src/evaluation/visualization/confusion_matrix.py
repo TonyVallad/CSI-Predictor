@@ -9,7 +9,7 @@ import numpy as np
 import seaborn as sns
 from typing import Dict, Optional
 from pathlib import Path
-from ...utils.logging import logger
+from src.utils.logging import logger
 
 def save_confusion_matrix_graphs(
     confusion_matrices: Dict[str, np.ndarray],

@@ -7,8 +7,8 @@ This module contains training CLI functionality extracted from the original main
 import argparse
 from loguru import logger
 
-from ..config import cfg, copy_config_on_training_start
-from ..training.trainer import train_model
+from src.config import cfg, copy_config_on_training_start
+from src.training.trainer import train_model
 
 def train_cli(args, optimized=False):
     """
@@ -26,7 +26,7 @@ def train_cli(args, optimized=False):
             return
         
         logger.info("Training with optimized hyperparameters...")
-        from ..training.train_optimized import train_with_optimized_hyperparameters
+        from src.training.train_optimized import train_with_optimized_hyperparameters
         
         train_with_optimized_hyperparameters(
             hyperparams_path=args.hyperparams,

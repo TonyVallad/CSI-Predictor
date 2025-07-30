@@ -12,9 +12,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from loguru import logger
 
-from ..config import cfg, copy_config_on_training_start
-from ..training.trainer import train_model
-from ..evaluation.evaluator import evaluate_model
+from src.config import cfg, copy_config_on_training_start
+from src.training.trainer import train_model
+from src.evaluation.evaluator import evaluate_model
 from .train import train_cli
 from .evaluate import evaluate_cli
 from .optimize import optimize_cli

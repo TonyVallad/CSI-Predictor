@@ -6,7 +6,7 @@ This module contains W&B logging functionality extracted from the original src/e
 
 import wandb
 from typing import Dict
-from ...utils.logging import logger
+from src.utils.logging import logger
 
 def log_to_wandb(
     val_metrics: Dict,

@@ -9,7 +9,7 @@ import configparser
 from pathlib import Path
 from typing import Any, Dict, List
 from dotenv import dotenv_values
-from ...utils.logging import logger
+from src.utils.logging import logger
 from .config import Config
 
 class ConfigLoader:

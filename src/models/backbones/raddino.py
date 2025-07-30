@@ -6,7 +6,7 @@ This module contains RadDINO backbone functionality extracted from the original 
 
 import torch
 import torch.nn as nn
-from ...utils.logging import logger
+from src.utils.logging import logger
 
 # Conditional import for RadDINO (requires transformers library)
 RADDINO_AVAILABLE = False

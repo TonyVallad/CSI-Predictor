@@ -7,7 +7,7 @@ This module contains model factory functionality extracted from the original src
 import torch
 import torch.nn as nn
 from typing import Optional
-from ...utils.logging import logger
+from src.utils.logging import logger
 from .complete import CSIModel, CSIModelWithZoneMasking
 
 def build_model(cfg, use_zone_focus: bool = None) -> nn.Module:
