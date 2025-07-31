@@ -32,7 +32,9 @@ def save_training_history(
     val_precisions: List[float],
     train_f1_scores: List[float],
     val_f1_scores: List[float],
-    save_path: str
+    save_path: str,
+    train_ahf_confusion_matrix: Optional[List[List[int]]] = None,
+    val_ahf_confusion_matrix: Optional[List[List[int]]] = None
 ) -> None:
     """
     Save training history to JSON file.
@@ -47,6 +49,8 @@ def save_training_history(
         train_f1_scores: Training F1 scores per epoch
         val_f1_scores: Validation F1 scores per epoch
         save_path: Path to save the JSON file
+        train_ahf_confusion_matrix: Training AHF confusion matrix (optional)
+        val_ahf_confusion_matrix: Validation AHF confusion matrix (optional)
     """
     import json
     from pathlib import Path
@@ -63,6 +67,12 @@ def save_training_history(
         'val_f1_scores': val_f1_scores,
         'epochs': list(range(1, len(train_losses) + 1))
     }
+    
+    # Add AHF confusion matrices if provided
+    if train_ahf_confusion_matrix is not None:
+        training_history['train_ahf_confusion_matrix'] = train_ahf_confusion_matrix
+    if val_ahf_confusion_matrix is not None:
+        training_history['val_ahf_confusion_matrix'] = val_ahf_confusion_matrix
     
     # Save to specified path
     save_path = Path(save_path)
@@ -83,7 +93,9 @@ def save_training_history_to_ini_dir(
     val_precisions: List[float],
     train_f1_scores: List[float],
     val_f1_scores: List[float],
-    config
+    config,
+    train_ahf_confusion_matrix: Optional[List[List[int]]] = None,
+    val_ahf_confusion_matrix: Optional[List[List[int]]] = None
 ) -> str:
     """
     Save training history to INI_DIR folder (like config.ini).
@@ -98,6 +110,8 @@ def save_training_history_to_ini_dir(
         train_f1_scores: Training F1 scores per epoch
         val_f1_scores: Validation F1 scores per epoch
         config: Configuration object
+        train_ahf_confusion_matrix: Training AHF confusion matrix (optional)
+        val_ahf_confusion_matrix: Validation AHF confusion matrix (optional)
         
     Returns:
         Path to the saved training history file
@@ -113,7 +127,9 @@ def save_training_history_to_ini_dir(
         train_accuracies, val_accuracies,
         train_precisions, val_precisions,
         train_f1_scores, val_f1_scores,
-        str(save_path)
+        str(save_path),
+        train_ahf_confusion_matrix,
+        val_ahf_confusion_matrix
     )
     
     return str(save_path)

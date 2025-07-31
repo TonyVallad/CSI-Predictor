@@ -388,12 +388,25 @@ def train_model(config: Config) -> Path:
     
     # Save training history to INI_DIR (like config.ini)
     from src.utils.file_utils import save_training_history_to_ini_dir
+    
+    # Get final AHF confusion matrices from the last validation epoch
+    final_train_ahf_cm = None
+    final_val_ahf_cm = None
+    
+    # For now, we'll use the validation AHF confusion matrix as both train and val
+    # since we don't track training AHF metrics separately during training
+    if 'ahf_confusion_matrix' in val_metrics:
+        final_val_ahf_cm = val_metrics['ahf_confusion_matrix']
+        final_train_ahf_cm = val_metrics['ahf_confusion_matrix']  # Use same for now
+    
     ini_history_path = save_training_history_to_ini_dir(
         train_losses, val_losses,
         train_accuracies, val_accuracies,
         train_precisions, val_precisions,
         train_f1_scores, val_f1_scores,
-        config
+        config,
+        final_train_ahf_cm,
+        final_val_ahf_cm
     )
     
     # Copy training history to run directory

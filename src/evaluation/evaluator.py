@@ -453,11 +453,19 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
             val_f1_scores = history.get('val_f1_scores', [])
             train_precisions = history.get('train_precisions', [])
             val_precisions = history.get('val_precisions', [])
+            
+            # Load training AHF confusion matrix
+            train_ahf_conf_matrix = None
+            if 'train_ahf_confusion_matrix' in history:
+                train_ahf_conf_matrix = np.array(history['train_ahf_confusion_matrix'])
+                logger.info("Loaded training AHF confusion matrix from training history")
+            
             logger.info("Loaded training history from INI_DIR for dashboard")
         else:
             logger.warning("Training history file not found in INI_DIR, using empty lists for dashboard")
     except Exception as e:
         logger.warning(f"Could not load training history from INI_DIR: {e}, using empty lists for dashboard")
+        train_ahf_conf_matrix = None
     
     # Create validation dashboard (always create, even without training history)
     try:
@@ -471,7 +479,8 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
             val_overall_conf_matrix,
             str(run_dir) if run_dir else str(graphs_dir),
             config.model_arch, "validation",
-            ahf_confusion_matrix=val_ahf_conf_matrix
+            train_ahf_confusion_matrix=train_ahf_conf_matrix,
+            eval_ahf_confusion_matrix=val_ahf_conf_matrix
         )
         logger.info("Created validation summary dashboard")
     except Exception as e:
@@ -489,7 +498,8 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
             test_overall_conf_matrix,
             str(run_dir) if run_dir else str(graphs_dir),
             config.model_arch, "test",
-            ahf_confusion_matrix=test_ahf_conf_matrix
+            train_ahf_confusion_matrix=train_ahf_conf_matrix,
+            eval_ahf_confusion_matrix=test_ahf_conf_matrix
         )
         logger.info("Created test summary dashboard")
     except Exception as e:
