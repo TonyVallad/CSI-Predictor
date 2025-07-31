@@ -304,6 +304,7 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
     
     # Zone names
     zone_names = ["right_sup", "left_sup", "right_mid", "left_mid", "right_inf", "left_inf"]
+    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
     
     # Evaluate on validation set
     logger.info("Evaluating on validation set...")
@@ -336,24 +337,118 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
     if run_dir is not None:
         # Use run directory structure
         output_dir = run_dir / "evaluation"
-        confusion_matrices_dir = run_dir / "graphs" / "confusion_matrices"
+        graphs_dir = run_dir / "graphs"
+        roc_curves_dir = graphs_dir / "roc_curves"
+        pr_curves_dir = graphs_dir / "pr_curves"
+        confusion_matrices_dir = graphs_dir / "confusion_matrices"
         logger.info(f"Saving evaluation outputs to run directory: {output_dir}")
     else:
         # Use legacy evaluation directory
         output_dir = Path(config.evaluation_dir)
-        confusion_matrices_dir = Path(config.graph_dir) / "confusion_matrices"
+        graphs_dir = Path(config.graph_dir)
+        roc_curves_dir = graphs_dir / "roc_curves"
+        pr_curves_dir = graphs_dir / "pr_curves"
+        confusion_matrices_dir = graphs_dir / "confusion_matrices"
         logger.info(f"Saving evaluation outputs to evaluation directory: {output_dir}")
     
+    # Create directories
     output_dir.mkdir(parents=True, exist_ok=True)
+    roc_curves_dir.mkdir(parents=True, exist_ok=True)
+    pr_curves_dir.mkdir(parents=True, exist_ok=True)
     confusion_matrices_dir.mkdir(parents=True, exist_ok=True)
     
     # Save predictions
     save_predictions(val_predictions, val_targets, output_dir / "val_predictions.csv", zone_names)
     save_predictions(test_predictions, test_targets, output_dir / "test_predictions.csv", zone_names)
     
+    # Generate ROC curves
+    logger.info("Generating ROC curves...")
+    from .visualization.plots import create_roc_curves
+    create_roc_curves(val_probabilities, val_targets, zone_names, class_names, 
+                     str(roc_curves_dir), "validation")
+    create_roc_curves(test_probabilities, test_targets, zone_names, class_names, 
+                     str(roc_curves_dir), "test")
+    
+    # Generate Precision-Recall curves
+    logger.info("Generating Precision-Recall curves...")
+    from .visualization.plots import create_precision_recall_curves
+    create_precision_recall_curves(val_probabilities, val_targets, zone_names, class_names, 
+                                  str(pr_curves_dir), "validation")
+    create_precision_recall_curves(test_probabilities, test_targets, zone_names, class_names, 
+                                  str(pr_curves_dir), "test")
+    
     # Save confusion matrix graphs
+    from .visualization.confusion_matrix import save_confusion_matrix_graphs
     save_confusion_matrix_graphs(val_confusion_matrices, config, "evaluation", "validation", str(confusion_matrices_dir))
     save_confusion_matrix_graphs(test_confusion_matrices, config, "evaluation", "test", str(confusion_matrices_dir))
+    
+    # Save overall confusion matrix directly in graphs folder (not in subfolder)
+    logger.info("Generating overall confusion matrix...")
+    from .visualization.confusion_matrix import create_overall_confusion_matrix as create_overall_confusion_matrix_plot
+    create_overall_confusion_matrix_plot(val_confusion_matrices, str(graphs_dir), "validation", config.model_arch)
+    create_overall_confusion_matrix_plot(test_confusion_matrices, str(graphs_dir), "test", config.model_arch)
+    
+    # Generate summary dashboard (save in run directory root, not in graphs subfolder)
+    logger.info("Generating summary dashboard...")
+    from .visualization.plots import create_summary_dashboard
+    from .metrics.evaluation_metrics import create_overall_confusion_matrix
+    
+    # Create overall confusion matrix for dashboard
+    val_overall_conf_matrix = create_overall_confusion_matrix(val_predictions, val_targets)
+    test_overall_conf_matrix = create_overall_confusion_matrix(test_predictions, test_targets)
+    
+    # For dashboard, we need training history - try to load it
+    train_losses, val_losses = [], []
+    train_accuracies, val_accuracies = [], []
+    train_f1_scores, val_f1_scores = [], []
+    train_precisions, val_precisions = [], []
+    
+    # Try to load training history from the model checkpoint
+    try:
+        checkpoint = torch.load(config.model_path, map_location='cpu')
+        if 'training_history' in checkpoint:
+            history = checkpoint['training_history']
+            train_losses = history.get('train_losses', [])
+            val_losses = history.get('val_losses', [])
+            train_accuracies = history.get('train_accuracies', [])
+            val_accuracies = history.get('val_accuracies', [])
+            train_f1_scores = history.get('train_f1_scores', [])
+            val_f1_scores = history.get('val_f1_scores', [])
+            train_precisions = history.get('train_precisions', [])
+            val_precisions = history.get('val_precisions', [])
+            logger.info("Loaded training history from checkpoint for dashboard")
+        else:
+            logger.warning("No training history found in checkpoint, using empty lists for dashboard")
+    except Exception as e:
+        logger.warning(f"Could not load training history: {e}, using empty lists for dashboard")
+    
+    # Create validation dashboard
+    if train_losses and val_losses:  # Only create if we have training history
+        create_summary_dashboard(
+            train_losses, val_losses,
+            train_accuracies, val_accuracies,
+            train_f1_scores, val_f1_scores,
+            train_precisions, val_precisions,
+            val_probabilities, val_targets,
+            zone_names, class_names,
+            val_overall_conf_matrix,
+            str(run_dir) if run_dir else str(graphs_dir),
+            config.model_arch, "validation"
+        )
+    
+    # Create test dashboard
+    if train_losses and val_losses:  # Only create if we have training history
+        create_summary_dashboard(
+            train_losses, val_losses,
+            train_accuracies, val_accuracies,
+            train_f1_scores, val_f1_scores,
+            train_precisions, val_precisions,
+            test_probabilities, test_targets,
+            zone_names, class_names,
+            test_overall_conf_matrix,
+            str(run_dir) if run_dir else str(graphs_dir),
+            config.model_arch, "test"
+        )
     
     # Log to wandb if enabled
     if hasattr(config, 'use_wandb') and config.use_wandb:
@@ -368,6 +463,9 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
     logger.info("Evaluation completed!")
     logger.info(f"Validation - F1 Macro: {val_overall_metrics['f1_macro']:.4f}, Accuracy: {val_overall_metrics['accuracy']:.4f}")
     logger.info(f"Test - F1 Macro: {test_overall_metrics['f1_macro']:.4f}, Accuracy: {test_overall_metrics['accuracy']:.4f}")
+    logger.info(f"All graphs saved to: {graphs_dir if run_dir else config.graph_dir}")
+    if run_dir:
+        logger.info(f"Summary dashboard saved to: {run_dir}")
 
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 

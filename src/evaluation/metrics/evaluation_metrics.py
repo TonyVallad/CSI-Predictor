@@ -196,5 +196,29 @@ def compute_overall_metrics(predictions: np.ndarray, targets: np.ndarray) -> Dic
     
     return overall_metrics
 
+
+def create_overall_confusion_matrix(predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
+    """
+    Create an overall confusion matrix by combining all zones.
+    
+    Args:
+        predictions: Predicted CSI class indices [num_samples, num_zones]
+        targets: Ground truth CSI class indices [num_samples, num_zones]
+        
+    Returns:
+        Overall confusion matrix [num_classes, num_classes]
+    """
+    from sklearn.metrics import confusion_matrix
+    
+    # Flatten predictions and targets across all zones
+    all_predictions = predictions.flatten()
+    all_targets = targets.flatten()
+    
+    # Compute overall confusion matrix
+    overall_cm = confusion_matrix(all_targets, all_predictions, labels=[0, 1, 2, 3, 4])
+    
+    return overall_cm
+
+
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 

@@ -369,5 +369,237 @@ def plot_training_curves(
     
     logger.info(f"Saved training curves to {plot_path}")
 
+
+def create_summary_dashboard(
+    train_losses: List[float],
+    val_losses: List[float],
+    train_accuracies: List[float],
+    val_accuracies: List[float],
+    train_f1_scores: List[float],
+    val_f1_scores: List[float],
+    train_precisions: List[float],
+    val_precisions: List[float],
+    predictions_proba: np.ndarray,
+    targets: np.ndarray,
+    zone_names: List[str],
+    class_names: List[str],
+    confusion_matrix: np.ndarray,
+    save_dir: str,
+    run_name: str = "model",
+    split_name: str = "validation",
+    ignore_class: int = 4
+) -> None:
+    """
+    Create a comprehensive summary dashboard with training curves, confusion matrix, and ROC curves.
+    
+    Args:
+        train_losses: Training losses per epoch
+        val_losses: Validation losses per epoch
+        train_accuracies: Training accuracies per epoch
+        val_accuracies: Validation accuracies per epoch
+        train_f1_scores: Training F1 scores per epoch
+        val_f1_scores: Validation F1 scores per epoch
+        train_precisions: Training precisions per epoch
+        val_precisions: Validation precisions per epoch
+        predictions_proba: Prediction probabilities [N, zones, classes]
+        targets: Ground truth labels [N, zones]
+        zone_names: Names of anatomical zones
+        class_names: Names of CSI classes
+        confusion_matrix: Overall confusion matrix
+        save_dir: Directory to save the dashboard
+        run_name: Name of the run
+        split_name: Name of the data split
+        ignore_class: Class to ignore in evaluation (default: 4 for ungradable)
+    """
+    from sklearn.metrics import roc_curve, auc
+    from sklearn.preprocessing import label_binarize
+    import matplotlib.colors as mcolors
+    
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    # Create figure with 3x2 subplots
+    fig = plt.figure(figsize=(20, 15))
+    fig.suptitle(f'Training Summary Dashboard - {run_name}_{split_name}', fontsize=16, fontweight='bold')
+    
+    # Add timestamp
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    fig.text(0.5, 0.98, f'Generated on {timestamp}', ha='center', va='top', fontsize=10, style='italic')
+    
+    # Create grid layout
+    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+    
+    epochs = list(range(1, len(train_losses) + 1))
+    
+    # 1. Model Accuracy (Top-Left)
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax1.plot(epochs, train_accuracies, 'b-', label='Training Accuracy', linewidth=2)
+    ax1.plot(epochs, val_accuracies, 'r-', label='Validation Accuracy', linewidth=2)
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Accuracy')
+    ax1.set_title('Model Accuracy')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # 2. Model Loss (Top-Middle)
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
+    ax2.plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Loss')
+    ax2.set_title('Model Loss')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    # 3. Confusion Matrix (Top-Right)
+    ax3 = fig.add_subplot(gs[0, 2])
+    sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='Blues', ax=ax3)
+    ax3.set_title(f'Confusion Matrix\nAccuracy: {np.sum(np.diag(confusion_matrix)) / np.sum(confusion_matrix):.3f}')
+    ax3.set_xlabel('Predicted')
+    ax3.set_ylabel('Actual')
+    
+    # 4. Model Precision (Bottom-Left)
+    ax4 = fig.add_subplot(gs[1, 0])
+    ax4.plot(epochs, train_precisions, 'b-', label='Training Precision', linewidth=2)
+    ax4.plot(epochs, val_precisions, 'r-', label='Validation Precision', linewidth=2)
+    ax4.set_xlabel('Epoch')
+    ax4.set_ylabel('Precision')
+    ax4.set_title('Model Precision')
+    ax4.legend()
+    ax4.grid(True, alpha=0.3)
+    
+    # 5. Model F1 Score (Bottom-Middle)
+    ax5 = fig.add_subplot(gs[1, 1])
+    ax5.plot(epochs, train_f1_scores, 'b-', label='Training F1', linewidth=2)
+    ax5.plot(epochs, val_f1_scores, 'r-', label='Validation F1', linewidth=2)
+    ax5.set_xlabel('Epoch')
+    ax5.set_ylabel('F1 Score')
+    ax5.set_title('Model F1 Score')
+    ax5.legend()
+    ax5.grid(True, alpha=0.3)
+    
+    # 6. ROC Curves (Bottom-Right) - Span 2 columns
+    ax6 = fig.add_subplot(gs[1, 2])
+    
+    # Calculate overall ROC curves (average across zones)
+    all_targets = targets.flatten()
+    all_proba = predictions_proba.reshape(-1, predictions_proba.shape[-1])
+    
+    # Filter out ignore_class samples
+    valid_mask = all_targets != ignore_class
+    if valid_mask.any():
+        all_targets_valid = all_targets[valid_mask]
+        all_proba_valid = all_proba[valid_mask]
+        
+        # Color palette for classes
+        colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#7209B7']
+        
+        all_aucs = []
+        valid_classes = [i for i in range(len(class_names)) if i != ignore_class]
+        
+        for class_idx in valid_classes:
+            if class_idx >= all_proba_valid.shape[1]:
+                continue
+                
+            # Create binary problem: current class vs all others
+            binary_targets = (all_targets_valid == class_idx).astype(int)
+            
+            # Skip if this class has no positive samples
+            if binary_targets.sum() == 0:
+                continue
+                
+            class_proba = all_proba_valid[:, class_idx]
+            
+            # Compute ROC curve and AUC
+            fpr, tpr, _ = roc_curve(binary_targets, class_proba)
+            roc_auc = auc(fpr, tpr)
+            all_aucs.append(roc_auc)
+            
+            # Plot ROC curve
+            color = colors[class_idx % len(colors)]
+            ax6.plot(fpr, tpr, color=color, lw=2,
+                    label=f'{class_names[class_idx]} (AUC = {roc_auc:.3f})')
+        
+        # Plot diagonal line
+        ax6.plot([0, 1], [0, 1], 'k--', lw=1, label='Random')
+        
+        # Calculate and display mean AUC
+        if all_aucs:
+            mean_auc = np.mean(all_aucs)
+            ax6.set_title(f'ROC Curves\nMean AUC: {mean_auc:.3f}')
+    
+    ax6.set_xlim([0.0, 1.0])
+    ax6.set_ylim([0.0, 1.05])
+    ax6.set_xlabel('False Positive Rate')
+    ax6.set_ylabel('True Positive Rate')
+    ax6.legend(loc="lower right")
+    ax6.grid(True, alpha=0.3)
+    
+    # 7. Zone-wise Performance (Bottom row spanning all columns)
+    ax7 = fig.add_subplot(gs[2, :])
+    
+    # Calculate average metrics per zone
+    zone_accuracies = []
+    zone_f1_scores = []
+    
+    for zone_idx, zone_name in enumerate(zone_names):
+        zone_targets = targets[:, zone_idx]
+        zone_predictions = np.argmax(predictions_proba[:, zone_idx, :], axis=1)
+        
+        # Filter out ignore_class
+        valid_mask = zone_targets != ignore_class
+        if valid_mask.any():
+            zone_targets_valid = zone_targets[valid_mask]
+            zone_predictions_valid = zone_predictions[valid_mask]
+            
+            # Calculate accuracy
+            accuracy = np.mean(zone_targets_valid == zone_predictions_valid)
+            zone_accuracies.append(accuracy)
+            
+            # Calculate F1 score
+            from sklearn.metrics import f1_score
+            f1 = f1_score(zone_targets_valid, zone_predictions_valid, average='macro')
+            zone_f1_scores.append(f1)
+        else:
+            zone_accuracies.append(0.0)
+            zone_f1_scores.append(0.0)
+    
+    # Create bar plot
+    x = np.arange(len(zone_names))
+    width = 0.35
+    
+    bars1 = ax7.bar(x - width/2, zone_accuracies, width, label='Accuracy', alpha=0.8)
+    bars2 = ax7.bar(x + width/2, zone_f1_scores, width, label='F1 Score', alpha=0.8)
+    
+    ax7.set_xlabel('Zones')
+    ax7.set_ylabel('Score')
+    ax7.set_title('Zone-wise Performance')
+    ax7.set_xticks(x)
+    ax7.set_xticklabels([name.replace('_', ' ').title() for name in zone_names], rotation=45)
+    ax7.legend()
+    ax7.grid(True, alpha=0.3)
+    
+    # Add value labels on bars
+    for bar in bars1:
+        height = bar.get_height()
+        ax7.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                f'{height:.3f}', ha='center', va='bottom', fontsize=8)
+    
+    for bar in bars2:
+        height = bar.get_height()
+        ax7.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                f'{height:.3f}', ha='center', va='bottom', fontsize=8)
+    
+    plt.tight_layout()
+    
+    # Save dashboard
+    dashboard_path = save_path / f"{run_name}_{split_name}_summary_dashboard.png"
+    plt.savefig(dashboard_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved summary dashboard to {dashboard_path}")
+
+
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 
