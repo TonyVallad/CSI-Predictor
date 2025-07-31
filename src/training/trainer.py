@@ -19,7 +19,7 @@ import pandas as pd
 from src.config import Config, cfg
 from src.data.dataloader import create_data_loaders
 from src.data.preprocessing import load_csv_data, convert_nans_to_unknown
-from src.models.factory import create_model
+from src.models.factory import build_model
 from src.utils.seed import seed_everything
 from src.utils.logging import logger
 from src.utils.file_utils import create_dirs, save_training_history
