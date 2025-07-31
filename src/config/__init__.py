@@ -99,6 +99,13 @@ def get_config(env_path: str = ".env", ini_path: str = None, force_reload: bool 
         loader = ConfigLoader(env_path, ini_path)
         _config_instance = loader.create_config()
         
+        # Setup logging with the correct logs_dir from config
+        from src.utils.logging import setup_logging
+        setup_logging(_config_instance.logs_dir)
+        
+        logger.info("Configuration loaded successfully")
+        logger.info(f"Logs directory: {_config_instance.logs_dir}")
+        
         # Validate configuration
         try:
             validate_config(_config_instance)

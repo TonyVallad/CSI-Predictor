@@ -8,6 +8,9 @@ import sys
 from pathlib import Path
 from loguru import logger
 
+# Flag to track if logging has been set up
+_logging_setup = False
+
 def setup_logging(log_dir: str = "./logs", log_level: str = "INFO") -> None:
     """
     Setup Loguru logging with rotating file handler.
@@ -16,10 +19,12 @@ def setup_logging(log_dir: str = "./logs", log_level: str = "INFO") -> None:
         log_dir: Directory for log files
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
     """
+    global _logging_setup
+    
     # Create logs directory
     Path(log_dir).mkdir(parents=True, exist_ok=True)
     
-    # Remove default handler
+    # Remove default handler and any existing handlers
     logger.remove()
     
     # Add console handler with colors
@@ -40,10 +45,12 @@ def setup_logging(log_dir: str = "./logs", log_level: str = "INFO") -> None:
         compression="zip"
     )
     
+    _logging_setup = True
     logger.info(f"Logging setup complete. Log files will be stored in: {log_dir}")
 
-# Setup logging on import
-setup_logging()
+# Setup basic logging on import (fallback)
+if not _logging_setup:
+    setup_logging()
 
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 
