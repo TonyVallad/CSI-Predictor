@@ -422,8 +422,8 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
     except Exception as e:
         logger.warning(f"Could not load training history: {e}, using empty lists for dashboard")
     
-    # Create validation dashboard
-    if train_losses and val_losses:  # Only create if we have training history
+    # Create validation dashboard (always create, even without training history)
+    try:
         create_summary_dashboard(
             train_losses, val_losses,
             train_accuracies, val_accuracies,
@@ -435,9 +435,12 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
             str(run_dir) if run_dir else str(graphs_dir),
             config.model_arch, "validation"
         )
+        logger.info("Created validation summary dashboard")
+    except Exception as e:
+        logger.error(f"Failed to create validation dashboard: {e}")
     
-    # Create test dashboard
-    if train_losses and val_losses:  # Only create if we have training history
+    # Create test dashboard (always create, even without training history)
+    try:
         create_summary_dashboard(
             train_losses, val_losses,
             train_accuracies, val_accuracies,
@@ -449,6 +452,9 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
             str(run_dir) if run_dir else str(graphs_dir),
             config.model_arch, "test"
         )
+        logger.info("Created test summary dashboard")
+    except Exception as e:
+        logger.error(f"Failed to create test dashboard: {e}")
     
     # Log to wandb if enabled
     if hasattr(config, 'use_wandb') and config.use_wandb:

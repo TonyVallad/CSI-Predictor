@@ -53,6 +53,67 @@ def create_roc_curves(
     # Color palette for classes
     colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#7209B7']
     
+    # Create overall ROC curve (combining all zones)
+    logger.info("Creating overall ROC curves...")
+    all_targets = targets.flatten()
+    all_proba = predictions_proba.reshape(-1, predictions_proba.shape[-1])
+    
+    # Filter out ignore_class samples
+    valid_mask = all_targets != ignore_class
+    if valid_mask.any():
+        all_targets_valid = all_targets[valid_mask]
+        all_proba_valid = all_proba[valid_mask]
+        
+        plt.figure(figsize=(10, 8))
+        
+        all_aucs = []
+        valid_classes = [i for i in range(len(class_names)) if i != ignore_class]
+        
+        for class_idx in valid_classes:
+            if class_idx >= all_proba_valid.shape[1]:
+                continue
+                
+            # Create binary problem: current class vs all others
+            binary_targets = (all_targets_valid == class_idx).astype(int)
+            
+            # Skip if this class has no positive samples
+            if binary_targets.sum() == 0:
+                continue
+                
+            class_proba = all_proba_valid[:, class_idx]
+            
+            # Compute ROC curve and AUC
+            fpr, tpr, _ = roc_curve(binary_targets, class_proba)
+            roc_auc = auc(fpr, tpr)
+            all_aucs.append(roc_auc)
+            
+            # Plot ROC curve
+            color = colors[class_idx % len(colors)]
+            plt.plot(fpr, tpr, color=color, lw=2,
+                    label=f'{class_names[class_idx]} (AUC = {roc_auc:.3f})')
+        
+        # Plot diagonal line
+        plt.plot([0, 1], [0, 1], 'k--', lw=1, label='Random')
+        
+        # Calculate and display mean AUC
+        if all_aucs:
+            mean_auc = np.mean(all_aucs)
+            plt.title(f'Overall ROC Curves - All Zones ({split_name})\nMean AUC: {mean_auc:.3f}')
+        
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.legend(loc="lower right")
+        plt.grid(True, alpha=0.3)
+        
+        # Save overall plot
+        overall_plot_path = overall_dir / f"overall_roc_curves_{split_name}.png"
+        plt.savefig(overall_plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        logger.info(f"Saved overall ROC curves to {overall_plot_path}")
+    
     for zone_idx, zone_name in enumerate(zone_names):
         zone_targets = targets[:, zone_idx]
         zone_proba = predictions_proba[:, zone_idx, :]
@@ -211,6 +272,66 @@ def create_precision_recall_curves(
     
     # Color palette for classes
     colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#7209B7']
+    
+    # Create overall PR curve (combining all zones)
+    logger.info("Creating overall PR curves...")
+    all_targets = targets.flatten()
+    all_proba = predictions_proba.reshape(-1, predictions_proba.shape[-1])
+    
+    # Filter out ignore_class samples
+    valid_mask = all_targets != ignore_class
+    if valid_mask.any():
+        all_targets_valid = all_targets[valid_mask]
+        all_proba_valid = all_proba[valid_mask]
+        
+        plt.figure(figsize=(10, 8))
+        
+        all_aps = []
+        valid_classes = [i for i in range(len(class_names)) if i != ignore_class]
+        
+        for class_idx in valid_classes:
+            if class_idx >= all_proba_valid.shape[1]:
+                continue
+                
+            # Create binary problem: current class vs all others
+            binary_targets = (all_targets_valid == class_idx).astype(int)
+            
+            # Skip if this class has no positive samples
+            if binary_targets.sum() == 0:
+                continue
+                
+            class_proba = all_proba_valid[:, class_idx]
+            
+            # Compute PR curve and AP
+            precision, recall, _ = precision_recall_curve(binary_targets, class_proba)
+            ap = average_precision_score(binary_targets, class_proba)
+            all_aps.append(ap)
+            
+            # Plot PR curve
+            color = colors[class_idx % len(colors)]
+            plt.plot(recall, precision, color=color, lw=2,
+                    label=f'{class_names[class_idx]} (AP = {ap:.3f})')
+        
+        # Calculate and display mean AP
+        if all_aps:
+            mean_ap = np.mean(all_aps)
+            plt.axhline(y=mean_ap, color='red', linestyle='--', lw=2,
+                       label=f'Mean AP = {mean_ap:.3f}')
+        
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('Recall')
+        plt.ylabel('Precision')
+        plt.title(f'Overall Precision-Recall Curves - All Zones ({split_name})')
+        plt.legend(loc="lower left")
+        plt.grid(True, alpha=0.3)
+        
+        # Save overall plot
+        overall_plot_path = overall_dir / f"overall_pr_curves_{split_name}.png"
+        plt.savefig(overall_plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        logger.info(f"Saved overall PR curves to {overall_plot_path}")
     
     for zone_idx, zone_name in enumerate(zone_names):
         zone_targets = targets[:, zone_idx]
@@ -455,22 +576,28 @@ def create_summary_dashboard(
     
     # 1. Model Accuracy (Top-Left)
     ax1 = fig.add_subplot(gs[0, 0])
-    ax1.plot(epochs, train_accuracies, 'b-', label='Training Accuracy', linewidth=2)
-    ax1.plot(epochs, val_accuracies, 'r-', label='Validation Accuracy', linewidth=2)
+    if train_accuracies and val_accuracies:
+        ax1.plot(epochs, train_accuracies, 'b-', label='Training Accuracy', linewidth=2)
+        ax1.plot(epochs, val_accuracies, 'r-', label='Validation Accuracy', linewidth=2)
+        ax1.legend()
+    else:
+        ax1.text(0.5, 0.5, 'Training history not available', ha='center', va='center', transform=ax1.transAxes)
     ax1.set_xlabel('Epoch')
     ax1.set_ylabel('Accuracy')
     ax1.set_title('Model Accuracy')
-    ax1.legend()
     ax1.grid(True, alpha=0.3)
     
     # 2. Model Loss (Top-Middle)
     ax2 = fig.add_subplot(gs[0, 1])
-    ax2.plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
-    ax2.plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
+    if train_losses and val_losses:
+        ax2.plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
+        ax2.plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
+        ax2.legend()
+    else:
+        ax2.text(0.5, 0.5, 'Training history not available', ha='center', va='center', transform=ax2.transAxes)
     ax2.set_xlabel('Epoch')
     ax2.set_ylabel('Loss')
     ax2.set_title('Model Loss')
-    ax2.legend()
     ax2.grid(True, alpha=0.3)
     
     # 3. Confusion Matrix (Top-Right)
@@ -482,22 +609,28 @@ def create_summary_dashboard(
     
     # 4. Model Precision (Bottom-Left)
     ax4 = fig.add_subplot(gs[1, 0])
-    ax4.plot(epochs, train_precisions, 'b-', label='Training Precision', linewidth=2)
-    ax4.plot(epochs, val_precisions, 'r-', label='Validation Precision', linewidth=2)
+    if train_precisions and val_precisions:
+        ax4.plot(epochs, train_precisions, 'b-', label='Training Precision', linewidth=2)
+        ax4.plot(epochs, val_precisions, 'r-', label='Validation Precision', linewidth=2)
+        ax4.legend()
+    else:
+        ax4.text(0.5, 0.5, 'Training history not available', ha='center', va='center', transform=ax4.transAxes)
     ax4.set_xlabel('Epoch')
     ax4.set_ylabel('Precision')
     ax4.set_title('Model Precision')
-    ax4.legend()
     ax4.grid(True, alpha=0.3)
     
     # 5. Model F1 Score (Bottom-Middle)
     ax5 = fig.add_subplot(gs[1, 1])
-    ax5.plot(epochs, train_f1_scores, 'b-', label='Training F1', linewidth=2)
-    ax5.plot(epochs, val_f1_scores, 'r-', label='Validation F1', linewidth=2)
+    if train_f1_scores and val_f1_scores:
+        ax5.plot(epochs, train_f1_scores, 'b-', label='Training F1', linewidth=2)
+        ax5.plot(epochs, val_f1_scores, 'r-', label='Validation F1', linewidth=2)
+        ax5.legend()
+    else:
+        ax5.text(0.5, 0.5, 'Training history not available', ha='center', va='center', transform=ax5.transAxes)
     ax5.set_xlabel('Epoch')
     ax5.set_ylabel('F1 Score')
     ax5.set_title('Model F1 Score')
-    ax5.legend()
     ax5.grid(True, alpha=0.3)
     
     # 6. ROC Curves (Bottom-Right) - Span 2 columns
