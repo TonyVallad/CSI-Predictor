@@ -259,16 +259,18 @@ class CSIModelWithZoneMasking(nn.Module):
                     # Apply zone-specific filtering (superior, middle, inferior)
                     if zone_idx in [0, 1]:  # Superior zones
                         zone_mask = zone_mask * torch.ones_like(zone_mask)
-                        zone_mask[:, height//3:, :] = 0
+                        zone_mask[height//3:, :] = 0
                     elif zone_idx in [2, 3]:  # Middle zones
                         zone_mask = zone_mask * torch.ones_like(zone_mask)
-                        zone_mask[:, :height//3, :] = 0
-                        zone_mask[:, 2*height//3:, :] = 0
+                        zone_mask[:height//3, :] = 0
+                        zone_mask[2*height//3:, :] = 0
                     else:  # Inferior zones
                         zone_mask = zone_mask * torch.ones_like(zone_mask)
-                        zone_mask[:, :2*height//3, :] = 0
+                        zone_mask[:2*height//3, :] = 0
                     
-                    masks.append(zone_mask.unsqueeze(0))
+                    # Add batch and channel dimensions: [1, 1, height, width]
+                    zone_mask = zone_mask.unsqueeze(0).unsqueeze(0)
+                    masks.append(zone_mask)
                 else:
                     # Fallback to grid-based mask
                     grid_mask = self.create_grid_zone_mask(1, height, width, zone_idx, device)
