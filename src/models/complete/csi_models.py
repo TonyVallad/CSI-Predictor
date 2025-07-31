@@ -344,12 +344,14 @@ class CSIModelWithZoneMasking(nn.Module):
                 
                 # Process through backbone and head
                 features = self.backbone(masked_x)
-                zone_logits = self.head(features)
+                zone_logits = self.head(features)  # [batch_size, n_zones, n_classes_per_zone]
                 
-                zone_predictions.append(zone_logits)
+                # Extract the specific zone prediction
+                zone_prediction = zone_logits[:, zone_idx:zone_idx+1, :]  # [batch_size, 1, n_classes_per_zone]
+                zone_predictions.append(zone_prediction)
             
             # Stack predictions: [batch_size, n_zones, n_classes_per_zone]
-            return torch.stack(zone_predictions, dim=1)
+            return torch.cat(zone_predictions, dim=1)
 
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 
