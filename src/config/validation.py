@@ -136,6 +136,15 @@ def validate_file_permissions(config: Config) -> None:
     ]
     
     for path_name, path_value in write_paths:
+        # Create directory if it doesn't exist
+        if not os.path.exists(path_value):
+            try:
+                os.makedirs(path_value, exist_ok=True)
+                logger.info(f"Created directory: {path_value}")
+            except Exception as e:
+                raise PermissionError(f"Cannot create directory {path_name}: {path_value} - {e}")
+        
+        # Check write permissions
         if not os.access(path_value, os.W_OK):
             raise PermissionError(f"No write permission for {path_name}: {path_value}")
 
@@ -200,6 +209,16 @@ def get_validation_summary(config: Config) -> List[Tuple[str, str]]:
     ]
     
     for path_name, path_value in write_paths:
+        # Create directory if it doesn't exist
+        if not os.path.exists(path_value):
+            try:
+                os.makedirs(path_value, exist_ok=True)
+                summary.append(("✅", f"{path_name}: {path_value} (created)"))
+            except Exception as e:
+                summary.append(("❌", f"{path_name}: {path_value} (cannot create: {e})"))
+                continue
+        
+        # Check write permissions
         if os.access(path_value, os.W_OK):
             summary.append(("✅", f"{path_name}: {path_value} (writable)"))
         else:

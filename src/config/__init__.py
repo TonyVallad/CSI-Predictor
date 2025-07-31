@@ -29,23 +29,49 @@ class ConfigProxy:
     def __setattr__(self, name, value):
         """Set attribute on the singleton config instance."""
         setattr(get_config(), name, value)
+    
+    def __getitem__(self, key):
+        """Allow dictionary-style access."""
+        return getattr(get_config(), key)
+    
+    def __setitem__(self, key, value):
+        """Allow dictionary-style assignment."""
+        setattr(get_config(), key, value)
 
 # Create cfg variable for backward compatibility
 cfg = ConfigProxy()
 
-def get_config(env_path: str = ".env", ini_path: str = "config/config.ini", force_reload: bool = False) -> Config:
+def get_config(env_path: str = ".env", ini_path: str = None, force_reload: bool = False) -> Config:
     """
     Get singleton configuration instance.
     
     Args:
         env_path: Path to .env file
-        ini_path: Path to config.ini file
+        ini_path: Path to config.ini file (if None, will look for config/config.ini relative to project root)
         force_reload: Whether to force reload configuration
         
     Returns:
         Singleton Config instance
     """
     global _config_instance
+    
+    # If ini_path is not provided, try to find it relative to the project root
+    if ini_path is None:
+        # Try to find the project root by looking for config/config.ini
+        possible_paths = [
+            "config/config.ini",
+            "../config/config.ini",
+            "../../config/config.ini",
+            "src/../config/config.ini",
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                ini_path = path
+                break
+        else:
+            # If not found, use the default
+            ini_path = "config/config.ini"
     
     if _config_instance is None or force_reload:
         logger.info("Initializing configuration...")
