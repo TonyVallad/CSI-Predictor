@@ -268,9 +268,7 @@ def train_model(config: Config) -> Path:
     from src.utils.file_utils import create_run_directory
     run_dir = create_run_directory(config, run_type="train")
     
-    # Copy configuration to run directory
-    from src.config import copy_config_on_training_start
-    copy_config_on_training_start(run_dir)
+    # Copy configuration to run directory (handled by copy_config_to_run_dir below)
     
     # Setup device
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
@@ -387,6 +385,24 @@ def train_model(config: Config) -> Path:
         train_f1_scores, val_f1_scores,
         str(history_path)
     )
+    
+    # Save training history to INI_DIR (like config.ini)
+    from src.utils.file_utils import save_training_history_to_ini_dir
+    ini_history_path = save_training_history_to_ini_dir(
+        train_losses, val_losses,
+        train_accuracies, val_accuracies,
+        train_precisions, val_precisions,
+        train_f1_scores, val_f1_scores,
+        config
+    )
+    
+    # Copy training history to run directory
+    from src.utils.file_utils import copy_training_history_to_run_dir
+    copy_training_history_to_run_dir(run_dir, config)
+    
+    # Copy config.ini to run directory
+    from src.utils.file_utils import copy_config_to_run_dir
+    copy_config_to_run_dir(run_dir, config)
     
     # Plot training curves to run directory
     training_curves_dir = run_dir / "graphs" / "training_curves"

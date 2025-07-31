@@ -357,6 +357,12 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
     pr_curves_dir.mkdir(parents=True, exist_ok=True)
     confusion_matrices_dir.mkdir(parents=True, exist_ok=True)
     
+    # Copy config.ini and training history to run directory (for eval runs)
+    if run_dir is not None:
+        from src.utils.file_utils import copy_config_to_run_dir, copy_training_history_to_run_dir
+        copy_config_to_run_dir(run_dir, config)
+        copy_training_history_to_run_dir(run_dir, config)
+    
     # Save predictions
     save_predictions(val_predictions, val_targets, output_dir / "val_predictions.csv", zone_names)
     save_predictions(test_predictions, test_targets, output_dir / "test_predictions.csv", zone_names)
