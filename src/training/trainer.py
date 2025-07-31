@@ -293,8 +293,8 @@ def train_model(config: Config) -> Path:
         logger.info("CSI average metrics will be computed without CSV ground truth comparison")
     
     # Create model
-    from src.models.factory import create_model
-    model = create_model(config)
+    from src.models.factory import build_model
+    model = build_model(config)
     model = model.to(device)
     
     # Setup optimizer and scheduler
