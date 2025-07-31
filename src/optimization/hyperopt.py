@@ -88,7 +88,7 @@ def get_cached_data_loaders(config: Config) -> Tuple[DataLoader, DataLoader, Dat
     
     # Create cache key based on data configuration (but not batch size)
     cache_key = (
-        config.data_dir,
+        config.nifti_dir,
         config.csv_dir,
         config.labels_csv,
         config.load_data_to_memory
@@ -155,27 +155,47 @@ def create_optuna_config(trial: optuna.trial.Trial, base_config: Config) -> Conf
     
     # Create new config object with suggested parameters
     new_config = Config(
-        # Copy base config values
+        # Environment and Device Settings
         device=base_config.device,
         load_data_to_memory=base_config.load_data_to_memory,
+        
+        # Data Paths
         data_source=base_config.data_source,
         data_dir=base_config.data_dir,
+        nifti_dir=base_config.nifti_dir,
         models_dir=base_config.models_dir,
         csv_dir=base_config.csv_dir,
         ini_dir=base_config.ini_dir,
+        png_dir=base_config.png_dir,
         graph_dir=base_config.graph_dir,
         debug_dir=base_config.debug_dir,
+        masks_dir=base_config.masks_dir,
+        logs_dir=base_config.logs_dir,
+        runs_dir=base_config.runs_dir,
+        evaluation_dir=base_config.evaluation_dir,
+        wandb_dir=base_config.wandb_dir,
+        
+        # Labels configuration
         labels_csv=base_config.labels_csv,
         labels_csv_separator=base_config.labels_csv_separator,
+        
+        # Data Filtering
         excluded_file_ids=base_config.excluded_file_ids,
+        
+        # Training Hyperparameters
         n_epochs=base_config.n_epochs,
         patience=base_config.patience,
+        
+        # Model Configuration
         use_official_processor=base_config.use_official_processor,
         use_segmentation_masking=base_config.use_segmentation_masking,
         masking_strategy=base_config.masking_strategy,
-        masks_path=base_config.masks_path,
+        
+        # Image Format Configuration
         image_format=base_config.image_format,
         image_extension=base_config.image_extension,
+        
+        # Normalization Strategy Configuration
         normalization_strategy=base_config.normalization_strategy,
         custom_mean=base_config.custom_mean,
         custom_std=base_config.custom_std,

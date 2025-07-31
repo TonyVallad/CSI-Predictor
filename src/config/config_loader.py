@@ -50,8 +50,9 @@ class ConfigLoader:
             # Also check system environment variables
             system_env_keys = [
                 "DEVICE", "LOAD_DATA_TO_MEMORY", "DATA_SOURCE", "DATA_DIR",
-                "MODELS_DIR", "CSV_DIR", "INI_DIR", "GRAPH_DIR", "DEBUG_DIR", 
-                "LABELS_CSV", "LABELS_CSV_SEPARATOR"
+                "INI_DIR", "CSV_DIR", "NIFTI_DIR", "PNG_DIR", "MODELS_DIR", 
+                "GRAPH_DIR", "DEBUG_DIR", "MASKS_DIR", "LOGS_DIR", "RUNS_DIR",
+                "EVALUATION_DIR", "WANDB_DIR", "LABELS_CSV", "LABELS_CSV_SEPARATOR"
             ]
             for key in system_env_keys:
                 if key in os.environ:
@@ -61,6 +62,32 @@ class ConfigLoader:
                 logger.info(f"Using {len(self._env_vars)} system environment variables")
             
             return self._env_vars
+    
+    def resolve_path(self, path_key: str, default_subfolder: str, data_dir: str) -> str:
+        """
+        Resolve a path variable using the new .env structure:
+        - If the path is empty or not set in .env, use DATA_DIR + subfolder
+        - If the path has a value in .env, use it as-is (absolute or relative)
+        
+        Args:
+            path_key: The environment variable key for the path
+            default_subfolder: The subfolder name to append to DATA_DIR if path is empty
+            data_dir: The master data directory path
+            
+        Returns:
+            Resolved path
+        """
+        # Get the path value from environment variables
+        path_value = self._env_vars.get(path_key, "")
+        
+        # If path is empty or not set, use DATA_DIR + subfolder
+        if not path_value or path_value.strip() == "":
+            resolved_path = os.path.join(data_dir, default_subfolder)
+            logger.debug(f"Path {path_key} not set in .env, using DATA_DIR subfolder: {resolved_path}")
+            return resolved_path
+        else:
+            logger.debug(f"Path {path_key} set in .env to: {path_value}")
+            return path_value
     
     def load_ini_vars(self) -> Dict[str, Any]:
         """
@@ -98,55 +125,51 @@ class ConfigLoader:
             value: Comma-separated string
             
         Returns:
-            List of trimmed strings (empty list if value is empty)
+            List of strings
         """
-        if not value or not value.strip():
+        if not value or value.strip() == "":
             return []
         
-        # Split by comma and strip whitespace from each item
+        # Split by comma and strip whitespace
         items = [item.strip() for item in value.split(',')]
-        # Filter out empty strings
+        # Remove empty items
         return [item for item in items if item]
     
     def convert_type(self, value: Any, target_type: type) -> Any:
         """
-        Convert value to target type with proper handling of string representations.
+        Convert value to target type with error handling.
         
         Args:
             value: Value to convert
-            target_type: Target type (int, float, bool, str)
+            target_type: Target type
             
         Returns:
-            Converted value
+            Converted value or None if conversion fails
         """
         if value is None:
             return None
         
-        # Handle string to bool conversion
-        if target_type == bool:
-            if isinstance(value, str):
-                return value.lower() in ('true', '1', 'yes', 'on')
-            return bool(value)
-        
-        # Handle string to list conversion
-        if target_type == list:
-            if isinstance(value, str):
-                return self.parse_comma_separated_list(value)
-            elif isinstance(value, list):
-                return value
-            else:
-                return [str(value)]
-        
-        # Handle other types
         try:
-            return target_type(value)
+            if target_type == bool:
+                if isinstance(value, str):
+                    return value.lower() in ('true', '1', 'yes', 'on')
+                return bool(value)
+            elif target_type == list:
+                if isinstance(value, str):
+                    return self.parse_comma_separated_list(value)
+                elif isinstance(value, list):
+                    return value
+                else:
+                    return [str(value)]
+            else:
+                return target_type(value)
         except (ValueError, TypeError) as e:
-            logger.warning(f"Could not convert '{value}' to {target_type.__name__}: {e}")
+            logger.warning(f"Failed to convert {value} to {target_type.__name__}: {e}")
             return None
     
     def get_config_value(self, key: str, default: Any, target_type: type) -> Any:
         """
-        Get configuration value from environment variables or INI file.
+        Get configuration value with type conversion and fallback logic.
         
         Args:
             key: Configuration key
@@ -188,6 +211,25 @@ class ConfigLoader:
         self.load_env_vars()
         self.load_ini_vars()
         
+        # Get the master data directory first
+        data_dir = self.get_config_value("DATA_DIR", "./data", str)
+        
+        # Resolve all path variables using the new .env structure
+        # If a path is empty in .env, it becomes a subfolder of DATA_DIR
+        # If a path has a value in .env, it uses that value directly
+        ini_dir = self.resolve_path("INI_DIR", "config", data_dir)
+        csv_dir = self.resolve_path("CSV_DIR", "csv", data_dir)
+        nifti_dir = self.resolve_path("NIFTI_DIR", "nifti", data_dir)
+        png_dir = self.resolve_path("PNG_DIR", "png", data_dir)
+        models_dir = self.resolve_path("MODELS_DIR", "models", data_dir)
+        graph_dir = self.resolve_path("GRAPH_DIR", "graphs", data_dir)
+        debug_dir = self.resolve_path("DEBUG_DIR", "debug", data_dir)
+        masks_dir = self.resolve_path("MASKS_DIR", "masks", data_dir)
+        logs_dir = self.resolve_path("LOGS_DIR", "logs", data_dir)
+        runs_dir = self.resolve_path("RUNS_DIR", "runs", data_dir)
+        evaluation_dir = self.resolve_path("EVALUATION_DIR", "evaluations", data_dir)
+        wandb_dir = self.resolve_path("WANDB_DIR", "wandb", data_dir)
+        
         # Create config with loaded values
         config = Config(
             # Environment and Device Settings
@@ -196,12 +238,19 @@ class ConfigLoader:
             
             # Data Paths
             data_source=self.get_config_value("DATA_SOURCE", "local", str),
-            data_dir=self.get_config_value("DATA_DIR", "/home/pyuser/data/Paradise_Images", str),
-            models_dir=self.get_config_value("MODELS_DIR", "./models", str),
-            csv_dir=self.get_config_value("CSV_DIR", "/home/pyuser/data/Paradise_CSV", str),
-            ini_dir=self.get_config_value("INI_DIR", "./config/", str),
-            graph_dir=self.get_config_value("GRAPH_DIR", "./graphs", str),
-            debug_dir=self.get_config_value("DEBUG_DIR", "./debug_output", str),
+            data_dir=data_dir,
+            nifti_dir=nifti_dir,
+            models_dir=models_dir,
+            csv_dir=csv_dir,
+            ini_dir=ini_dir,
+            png_dir=png_dir,
+            graph_dir=graph_dir,
+            debug_dir=debug_dir,
+            masks_dir=masks_dir,
+            logs_dir=logs_dir,
+            runs_dir=runs_dir,
+            evaluation_dir=evaluation_dir,
+            wandb_dir=wandb_dir,
             
             # Labels configuration
             labels_csv=self.get_config_value("LABELS_CSV", "Labeled_Data_RAW.csv", str),
@@ -228,7 +277,6 @@ class ConfigLoader:
             use_segmentation_masking=self.get_config_value("USE_SEGMENTATION_MASKING", True, bool),
             masking_strategy=self.get_config_value("MASKING_STRATEGY", "attention", str),
             attention_strength=self.get_config_value("ATTENTION_STRENGTH", 0.7, float),
-            masks_path=self.get_config_value("MASKS_PATH", "/home/pyuser/data/Paradise_Masks", str),
             
             # Image Format Configuration
             image_format=self.get_config_value("IMAGE_FORMAT", "nifti", str),

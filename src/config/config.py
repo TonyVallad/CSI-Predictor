@@ -24,11 +24,19 @@ class Config:
         
         # Data Paths
         data_source: Source of data (local/remote)
-        data_dir: Directory containing images
+        data_dir: Master data directory (parent for all data subdirectories)
+        nifti_dir: Directory containing NIFTI images
         models_dir: Directory for saving/loading models
         csv_dir: Directory containing CSV files
         ini_dir: Directory containing config files
+        png_dir: Directory for PNG images
         graph_dir: Directory for saving graphs and visualizations
+        debug_dir: Directory for debug visualizations
+        masks_dir: Directory for segmentation masks
+        logs_dir: Directory for saving logs and training history
+        runs_dir: Directory for training runs
+        evaluation_dir: Directory for evaluation outputs
+        wandb_dir: Directory for Weights & Biases files
         
         # Labels configuration
         labels_csv: CSV filename (not full path)
@@ -66,14 +74,19 @@ class Config:
     
     # Data Paths
     data_source: str = "local"
-    data_dir: str = "/home/pyuser/data/Paradise_Images"
-    models_dir: str = "./models"
-    csv_dir: str = "/home/pyuser/data/Paradise_CSV"
-    ini_dir: str = "./config/"
-    graph_dir: str = "./graphs"  # Directory for saving graphs and visualizations
-    debug_dir: str = "./debug_output"  # Directory for debug visualizations
-    logs_dir: str = "./logs"  # Directory for saving logs and training history
-    output_dir: str = "./evaluation_output"  # Directory for evaluation outputs
+    data_dir: str = "./data"  # Master data directory (defaults to ./data if not set in .env)
+    nifti_dir: str = ""  # Directory containing NIFTI images (resolved dynamically)
+    models_dir: str = ""  # Directory for saving/loading models (resolved dynamically)
+    csv_dir: str = ""  # Directory containing CSV files (resolved dynamically)
+    ini_dir: str = ""  # Directory containing config files (resolved dynamically)
+    png_dir: str = ""  # Directory for PNG images (resolved dynamically)
+    graph_dir: str = ""  # Directory for saving graphs and visualizations (resolved dynamically)
+    debug_dir: str = ""  # Directory for debug visualizations (resolved dynamically)
+    masks_dir: str = ""  # Directory for segmentation masks (resolved dynamically)
+    logs_dir: str = ""  # Directory for saving logs and training history (resolved dynamically)
+    runs_dir: str = ""  # Directory for training runs (resolved dynamically)
+    evaluation_dir: str = ""  # Directory for evaluation outputs (resolved dynamically)
+    wandb_dir: str = ""  # Directory for Weights & Biases files (resolved dynamically)
     
     # Labels configuration
     labels_csv: str = "Labeled_Data_RAW.csv"
@@ -100,7 +113,6 @@ class Config:
     use_segmentation_masking: bool = True
     masking_strategy: str = "attention"  # "zero" or "attention"
     attention_strength: float = 0.7
-    masks_path: str = "/home/pyuser/data/Paradise_Masks"
     
     # Image Format Configuration (V2.0 - NIFTI Support)
     image_format: str = "nifti"  # Image format (nifti only)
@@ -118,17 +130,17 @@ class Config:
     
     @property
     def data_path(self) -> str:
-        """Get full path to data directory."""
-        return os.path.join(self.data_dir)
+        """Legacy property for backward compatibility - returns nifti_dir."""
+        return self.nifti_dir
     
     @property
     def csv_path(self) -> str:
-        """Get full path to CSV file."""
+        """Construct full path to labels CSV file."""
         return os.path.join(self.csv_dir, self.labels_csv)
     
     @property
     def models_folder(self) -> str:
-        """Get models directory path."""
+        """Legacy property for backward compatibility."""
         return self.models_dir
     
     @property
@@ -136,16 +148,21 @@ class Config:
         """Get path to the final trained model."""
         return os.path.join(self.models_dir, "final_model.pth")
     
+    @property
+    def masks_path(self) -> str:
+        """Legacy property for backward compatibility - returns masks_dir."""
+        return self.masks_dir
+    
     def get_model_path(self, model_name: str, extension: str = "pth") -> str:
         """
         Get full path for a model file.
         
         Args:
-            model_name: Name of the model
-            extension: File extension (default: "pth")
+            model_name: Name of the model (without extension)
+            extension: File extension (default: pth)
             
         Returns:
-            Full path to model file
+            Full path to the model file
         """
         # Ensure models directory exists
         os.makedirs(self.models_dir, exist_ok=True)

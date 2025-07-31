@@ -107,7 +107,7 @@ class CSIModelWithZoneMasking(nn.Module):
         self.use_segmentation_masking = cfg.use_segmentation_masking
         self.masking_strategy = cfg.masking_strategy.lower()
         self.attention_strength = cfg.attention_strength
-        self.masks_path = cfg.masks_path
+        self.masks_path = cfg.masks_dir
         
         # Create base model
         self.backbone = get_backbone(backbone_arch, pretrained)

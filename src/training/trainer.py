@@ -308,7 +308,7 @@ def train_model(config: Config) -> None:
     early_stopping = EarlyStopping(patience=config.patience)
     
     # Create output directories
-    create_dirs(config.models_dir, config.logs_dir)
+    create_dirs(config.models_dir, config.logs_dir, config.graph_dir, config.debug_dir)
     
     # Training loop
     best_val_loss = float('inf')

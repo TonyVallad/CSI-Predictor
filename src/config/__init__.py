@@ -52,20 +52,22 @@ def get_config(env_path: str = ".env", ini_path: str = "config/config.ini", forc
 
 def copy_config_on_training_start() -> None:
     """
-    Copy resolved configuration with timestamp when training starts.
-    This creates a snapshot of the actual configuration used for training.
+    Copy the current configuration to a timestamped file in the config directory.
+    This is called at the start of training to preserve the exact configuration used.
     """
     config = get_config()
     
-    # Create timestamped filename
+    # Create timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    timestamped_filename = f"config_resolved_{timestamp}.ini"
-    timestamped_path = Path(config.ini_dir) / timestamped_filename
+    timestamped_filename = f"config_{timestamp}.ini"
     
-    # Ensure config directory exists
+    # Create the config directory if it doesn't exist
     os.makedirs(config.ini_dir, exist_ok=True)
     
-    # Create new config parser
+    # Create the timestamped config file
+    timestamped_path = Path(config.ini_dir) / timestamped_filename
+    
+    # Create a new config parser
     new_config = configparser.ConfigParser()
     
     # Add training section
@@ -84,18 +86,6 @@ def copy_config_on_training_start() -> None:
     new_config.set("MODEL", "USE_OFFICIAL_PROCESSOR", str(config.use_official_processor))
     new_config.set("MODEL", "ZONE_FOCUS_METHOD", config.zone_focus_method)
     
-    # Add data section
-    new_config.add_section("DATA")
-    excluded_ids_str = ",".join(config.excluded_file_ids) if config.excluded_file_ids else ""
-    new_config.set("DATA", "EXCLUDED_FILE_IDS", excluded_ids_str)
-    
-    # Add zones section
-    new_config.add_section("ZONES")
-    new_config.set("ZONES", "USE_SEGMENTATION_MASKING", str(config.use_segmentation_masking))
-    new_config.set("ZONES", "MASKING_STRATEGY", config.masking_strategy)
-    new_config.set("ZONES", "ATTENTION_STRENGTH", str(config.attention_strength))
-    new_config.set("ZONES", "MASKS_PATH", config.masks_path)
-    
     # Add image format section
     new_config.add_section("IMAGE_FORMAT")
     new_config.set("IMAGE_FORMAT", "IMAGE_FORMAT", config.image_format)
@@ -108,33 +98,71 @@ def copy_config_on_training_start() -> None:
         new_config.set("NORMALIZATION", "CUSTOM_MEAN", ",".join(map(str, config.custom_mean)))
         new_config.set("NORMALIZATION", "CUSTOM_STD", ",".join(map(str, config.custom_std)))
     
-    # Add environment section with resolved paths
-    new_config.add_section("ENVIRONMENT")
-    new_config.set("ENVIRONMENT", "DEVICE", config.device)
-    new_config.set("ENVIRONMENT", "DATA_SOURCE", config.data_source)
-    new_config.set("ENVIRONMENT", "DATA_DIR", config.data_dir)
-    new_config.set("ENVIRONMENT", "MODELS_DIR", config.models_dir)
-    new_config.set("ENVIRONMENT", "CSV_DIR", config.csv_dir)
-    new_config.set("ENVIRONMENT", "INI_DIR", config.ini_dir)
-    new_config.set("ENVIRONMENT", "GRAPH_DIR", config.graph_dir)
-    new_config.set("ENVIRONMENT", "DEBUG_DIR", config.debug_dir)
-    new_config.set("ENVIRONMENT", "LABELS_CSV", config.labels_csv)
-    new_config.set("ENVIRONMENT", "LABELS_CSV_SEPARATOR", config.labels_csv_separator)
-    new_config.set("ENVIRONMENT", "LOAD_DATA_TO_MEMORY", str(config.load_data_to_memory))
+    # Add data section
+    new_config.add_section("DATA")
+    excluded_ids_str = ",".join(config.excluded_file_ids) if config.excluded_file_ids else ""
+    new_config.set("DATA", "EXCLUDED_FILE_IDS", excluded_ids_str)
     
-    # Write timestamped config
-    try:
-        with open(timestamped_path, 'w') as f:
-            new_config.write(f)
-        logger.info(f"Copied resolved configuration to {timestamped_path}")
-    except Exception as e:
-        logger.error(f"Failed to copy configuration: {e}")
+    # Add zones section
+    new_config.add_section("ZONES")
+    new_config.set("ZONES", "USE_SEGMENTATION_MASKING", str(config.use_segmentation_masking))
+    new_config.set("ZONES", "MASKING_STRATEGY", config.masking_strategy)
+    new_config.set("ZONES", "ATTENTION_STRENGTH", str(config.attention_strength))
+    
+    # Write the config file
+    with open(timestamped_path, 'w') as configfile:
+        new_config.write(configfile)
+    
+    logger.info(f"Configuration saved to: {timestamped_path}")
 
-# Singleton instance - import this in other modules
-cfg = get_config()
+def create_default_env_file(env_path: str = ".env") -> None:
+    """
+    Create a default .env file with all the new path variables.
+    
+    Args:
+        env_path: Path where to create the .env file
+    """
+    env_content = """# CSI-Predictor Configuration
 
-# Export main components
-__all__ = ['Config', 'ConfigLoader', 'get_config', 'copy_config_on_training_start', 'cfg', 'validate_config', 'validate_paths', 'validate_file_permissions']
+# Discord Webhook for model results
+DISCORD_WEBHOOK_URL=
+
+# Device configuration
+DEVICE=cuda
+
+# Data loading configuration
+LOAD_DATA_TO_MEMORY=True
+
+# Data source and paths
+DATA_DIR=/home/pyuser/data/Paradise
+INI_DIR=
+CSV_DIR=
+NIFTI_DIR=
+PNG_DIR=
+MODELS_DIR=./models
+GRAPH_DIR=
+DEBUG_DIR=
+MASKS_DIR=
+LOGS_DIR=./logs
+RUNS_DIR=
+EVALUATION_DIR=
+WANDB_DIR=./wandb
+
+# Labels configuration
+LABELS_CSV=Labeled_Data_RAW.csv
+LABELS_CSV_SEPARATOR=;
+
+# Training Parameters (can be overridden by config.ini)
+BATCH_SIZE=32
+N_EPOCHS=100
+LEARNING_RATE=0.001
+MODEL_ARCH=resnet50
+"""
+    
+    with open(env_path, 'w') as f:
+        f.write(env_content)
+    
+    logger.info(f"Default .env file created at: {env_path}")
 
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 

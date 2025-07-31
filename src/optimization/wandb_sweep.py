@@ -42,7 +42,7 @@ def get_cached_data_loaders(config: Config) -> Tuple[DataLoader, DataLoader, Dat
     
     # Create cache key based on data configuration (but not batch size)
     cache_key = (
-        config.data_dir,
+        config.nifti_dir,
         config.csv_dir,
         config.labels_csv,
         config.load_data_to_memory
@@ -121,21 +121,38 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
     
     # Update config with W&B hyperparameters
     config = Config(
-        # Copy base config values
+        # Environment and Device Settings
         device=config.device,
         load_data_to_memory=config.load_data_to_memory,
+        
+        # Data Paths
         data_source=config.data_source,
         data_dir=config.data_dir,
+        nifti_dir=config.nifti_dir,
         models_dir=config.models_dir,
         csv_dir=config.csv_dir,
         ini_dir=config.ini_dir,
+        png_dir=config.png_dir,
         graph_dir=config.graph_dir,
         debug_dir=config.debug_dir,
+        masks_dir=config.masks_dir,
+        logs_dir=config.logs_dir,
+        runs_dir=config.runs_dir,
+        evaluation_dir=config.evaluation_dir,
+        wandb_dir=config.wandb_dir,
+        
+        # Labels configuration
         labels_csv=config.labels_csv,
         labels_csv_separator=config.labels_csv_separator,
+        
+        # Data Filtering
         excluded_file_ids=config.excluded_file_ids,
+        
+        # Training Hyperparameters
         n_epochs=config.n_epochs,
         patience=config.patience,
+        
+        # Model Configuration
         use_official_processor=config.use_official_processor,
         use_segmentation_masking=config.use_segmentation_masking,
         masking_strategy=config.masking_strategy,

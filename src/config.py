@@ -1,38 +1,26 @@
 """
-Centralized Configuration Loader for CSI-Predictor.
+Legacy configuration module for CSI-Predictor.
 
-This module provides a singleton configuration system that:
-- Loads environment variables from .env files using dotenv_values
-- Loads configuration from INI files using configparser
-- Merges and validates configuration into an immutable dataclass
-- Provides automatic type conversion for int, float, bool values
-- Logs missing keys and validation errors using loguru
-- Copies resolved config.ini with timestamp when training starts
-
-Usage:
-    from src.config import cfg
-    
-    # Access configuration values
-    print(cfg.batch_size)  # Automatically converted to int
-    print(cfg.learning_rate)  # Automatically converted to float
-    print(cfg.device)  # String value
+This module provides backward compatibility for the old configuration system.
+New code should use src.config instead.
 """
 
 import os
 import configparser
-import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, List
+from typing import Any, Dict, List, Optional
 from dotenv import dotenv_values
 from loguru import logger
 
+# Import the new config system
+from src.config import get_config as get_new_config, Config as NewConfig
 
 @dataclass(frozen=True)
 class Config:
     """
-    Immutable configuration dataclass that holds all application settings.
+    Legacy configuration dataclass for backward compatibility.
     
     This dataclass is frozen (immutable) to prevent accidental modification
     of configuration values during runtime.
@@ -44,7 +32,7 @@ class Config:
         
         # Data Paths
         data_source: Source of data (local/remote)
-        data_dir: Directory containing images
+        data_dir: Directory containing images (legacy - use nifti_dir)
         models_dir: Directory for saving/loading models
         csv_dir: Directory containing CSV files
         ini_dir: Directory containing config files
@@ -86,7 +74,7 @@ class Config:
     
     # Data Paths
     data_source: str = "local"
-    data_dir: str = "/home/pyuser/data/Paradise_Images"
+    data_dir: str = "/home/pyuser/data/Paradise_Images"  # Legacy - use nifti_dir
     models_dir: str = "./models"
     csv_dir: str = "/home/pyuser/data/Paradise_CSV"
     ini_dir: str = "./config/"
@@ -118,7 +106,7 @@ class Config:
     use_segmentation_masking: bool = True
     masking_strategy: str = "attention"  # "zero" or "attention"
     attention_strength: float = 0.7
-    masks_path: str = "/home/pyuser/data/Paradise_Masks"
+    masks_path: str = "/home/pyuser/data/Paradise_Masks"  # Legacy - use masks_dir
     
     # Image Format Configuration (V2.0 - NIFTI Support)
     image_format: str = "nifti"  # Image format (nifti only)
@@ -162,13 +150,15 @@ class Config:
         """
         if not extension.startswith('.'):
             extension = f'.{extension}'
+        
         return f"{self.models_dir}/{model_name}{extension}"
-
 
 class ConfigLoader:
     """
-    Configuration loader that handles loading, validation, and merging of configuration
-    from multiple sources (.env files and config.ini).
+    Legacy configuration loader for backward compatibility.
+    
+    This class provides backward compatibility for the old configuration system.
+    New code should use src.config.ConfigLoader instead.
     """
     
     def __init__(self, env_path: str = ".env", ini_path: str = "config.ini"):
@@ -191,18 +181,6 @@ class ConfigLoader:
         
         Returns:
             Dictionary of environment variables
-            
-        # Unit test stub:
-        # def test_load_env_vars():
-        #     loader = ConfigLoader()
-        #     # Create temporary .env file
-        #     with open(".env.test", "w") as f:
-        #         f.write("DEVICE=cpu\nBATCH_SIZE=64\n")
-        #     loader.env_path = Path(".env.test")
-        #     env_vars = loader.load_env_vars()
-        #     assert env_vars["DEVICE"] == "cpu"
-        #     assert env_vars["BATCH_SIZE"] == "64"
-        #     os.remove(".env.test")
         """
         if self.env_path.exists():
             logger.info(f"Loading environment variables from {self.env_path}")
@@ -215,8 +193,9 @@ class ConfigLoader:
             # Also check system environment variables
             system_env_keys = [
                 "DEVICE", "LOAD_DATA_TO_MEMORY", "DATA_SOURCE", "DATA_DIR",
-                "MODELS_DIR", "CSV_DIR", "INI_DIR", "GRAPH_DIR", "DEBUG_DIR", 
-                "LABELS_CSV", "LABELS_CSV_SEPARATOR"
+                "NIFTI_DIR", "MODELS_DIR", "CSV_DIR", "INI_DIR", "PNG_DIR", 
+                "GRAPH_DIR", "DEBUG_DIR", "MASKS_DIR", "LOGS_DIR", "RUNS_DIR",
+                "EVALUATION_DIR", "WANDB_DIR", "LABELS_CSV", "LABELS_CSV_SEPARATOR"
             ]
             for key in system_env_keys:
                 if key in os.environ:
@@ -233,18 +212,6 @@ class ConfigLoader:
         
         Returns:
             Dictionary of INI file variables
-            
-        # Unit test stub:
-        # def test_load_ini_vars():
-        #     loader = ConfigLoader()
-        #     # Create temporary config.ini file
-        #     with open("config.test.ini", "w") as f:
-        #         f.write("[TRAINING]\nBATCH_SIZE=32\nLEARNING_RATE=0.001\n")
-        #     loader.ini_path = Path("config.test.ini")
-        #     ini_vars = loader.load_ini_vars()
-        #     assert ini_vars["BATCH_SIZE"] == "32"
-        #     assert ini_vars["LEARNING_RATE"] == "0.001"
-        #     os.remove("config.test.ini")
         """
         if self.ini_path.exists():
             logger.info(f"Loading configuration from {self.ini_path}")
@@ -256,7 +223,9 @@ class ConfigLoader:
             for section_name, section in config.items():
                 if section_name != 'DEFAULT':  # Skip DEFAULT section
                     for key, value in section.items():
-                        ini_vars[key.upper()] = value
+                        # Strip comments from values (everything after #)
+                        clean_value = value.split('#')[0].strip()
+                        ini_vars[key.upper()] = clean_value
             
             self._ini_vars = ini_vars
             logger.debug(f"Loaded {len(self._ini_vars)} configuration values from INI file")
@@ -273,108 +242,80 @@ class ConfigLoader:
             value: Comma-separated string
             
         Returns:
-            List of trimmed strings (empty list if value is empty)
+            List of strings
         """
-        if not value or not value.strip():
+        if not value or value.strip() == "":
             return []
         
-        # Split by comma and strip whitespace from each item
+        # Split by comma and strip whitespace
         items = [item.strip() for item in value.split(',')]
-        # Filter out empty strings
+        # Remove empty items
         return [item for item in items if item]
     
     def convert_type(self, value: Any, target_type: type) -> Any:
         """
-        Convert value to target type with proper handling of string representations.
+        Convert value to target type with error handling.
         
         Args:
             value: Value to convert
-            target_type: Target type (int, float, bool, str)
+            target_type: Target type
             
         Returns:
-            Converted value
-            
-        # Unit test stub:
-        # def test_convert_type():
-        #     loader = ConfigLoader()
-        #     assert loader.convert_type("42", int) == 42
-        #     assert loader.convert_type("3.14", float) == 3.14
-        #     assert loader.convert_type("true", bool) == True
-        #     assert loader.convert_type("false", bool) == False
-        #     assert loader.convert_type("hello", str) == "hello"
+            Converted value or None if conversion fails
         """
         if value is None:
             return None
         
-        # Handle string inputs - strip inline comments
-        if isinstance(value, str):
-            value = value.strip()
-            # Strip inline comments (everything after #)
-            if '#' in value:
-                value = value.split('#')[0].strip()
-        
-        if target_type == bool:
-            if isinstance(value, bool):
-                return value
-            if isinstance(value, str):
-                return value.lower() in ('true', '1', 'yes', 'on', 'enabled')
-            return bool(value)
-        
-        if target_type == int:
-            return int(float(value))  # Handle "32.0" -> 32
-        
-        if target_type == float:
-            return float(value)
-        
-        if target_type == str:
-            return str(value)
-        
-        return value
+        try:
+            if target_type == bool:
+                if isinstance(value, str):
+                    return value.lower() in ('true', '1', 'yes', 'on')
+                return bool(value)
+            elif target_type == list:
+                if isinstance(value, str):
+                    return self.parse_comma_separated_list(value)
+                elif isinstance(value, list):
+                    return value
+                else:
+                    return [str(value)]
+            else:
+                return target_type(value)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Failed to convert {value} to {target_type.__name__}: {e}")
+            return None
     
     def get_config_value(self, key: str, default: Any, target_type: type) -> Any:
         """
-        Get configuration value with priority: ENV > INI > DEFAULT.
+        Get configuration value with type conversion and fallback logic.
         
         Args:
-            key: Configuration key name
-            default: Default value if not found
+            key: Configuration key
+            default: Default value if key not found
             target_type: Target type for conversion
             
         Returns:
-            Configuration value with proper type conversion
-            
-        # Unit test stub:
-        # def test_get_config_value():
-        #     loader = ConfigLoader()
-        #     loader._env_vars = {"BATCH_SIZE": "64"}
-        #     loader._ini_vars = {"BATCH_SIZE": "32"}
-        #     # ENV should take priority
-        #     assert loader.get_config_value("BATCH_SIZE", 16, int) == 64
-        #     # INI should be used if ENV missing
-        #     assert loader.get_config_value("LEARNING_RATE", 0.01, float) == 0.01
+            Configuration value
         """
-        # Priority: Environment variables > INI file > Default
-        value = None
-        source = "default"
-        
+        # Check environment variables first
         if key in self._env_vars:
             value = self._env_vars[key]
-            source = "environment"
-        elif key in self._ini_vars:
-            value = self._ini_vars[key]
-            source = "ini_file"
-        else:
-            value = default
-            self._missing_keys.append(key)
+            converted = self.convert_type(value, target_type)
+            if converted is not None:
+                return converted
         
-        try:
-            converted_value = self.convert_type(value, target_type)
-            logger.debug(f"Config {key}={converted_value} (from {source})")
-            return converted_value
-        except (ValueError, TypeError) as e:
-            logger.error(f"Failed to convert {key}={value} to {target_type.__name__}: {e}")
-            logger.warning(f"Using default value for {key}: {default}")
-            return default
+        # Check INI file
+        if key in self._ini_vars:
+            value = self._ini_vars[key]
+            converted = self.convert_type(value, target_type)
+            if converted is not None:
+                return converted
+        
+        # Use default value
+        if key not in self._missing_keys:
+            self._missing_keys.append(key)
+            logger.debug(f"Using default value for missing key: {key} = {default}")
+        
+        return default
     
     def create_config(self) -> Config:
         """
@@ -382,19 +323,29 @@ class ConfigLoader:
         
         Returns:
             Immutable Config instance
-            
-        # Unit test stub:
-        # def test_create_config():
-        #     loader = ConfigLoader()
-        #     config = loader.create_config()
-        #     assert isinstance(config, Config)
-        #     assert config.device in ["cuda", "cpu"]
-        #     assert config.batch_size > 0
-        #     assert config.learning_rate > 0
         """
         # Load from all sources
         self.load_env_vars()
         self.load_ini_vars()
+        
+        # Get the master data directory first
+        data_dir = self.get_config_value("DATA_DIR", "/home/pyuser/data/Paradise", str)
+        
+        # Resolve all path variables
+        nifti_dir = self.resolve_path("NIFTI_DIR", "nifti", data_dir)
+        csv_dir = self.resolve_path("CSV_DIR", "csv", data_dir)
+        ini_dir = self.resolve_path("INI_DIR", "config", data_dir)
+        png_dir = self.resolve_path("PNG_DIR", "png", data_dir)
+        graph_dir = self.resolve_path("GRAPH_DIR", "graphs", data_dir)
+        debug_dir = self.resolve_path("DEBUG_DIR", "debug", data_dir)
+        masks_dir = self.resolve_path("MASKS_DIR", "masks", data_dir)
+        runs_dir = self.resolve_path("RUNS_DIR", "runs", data_dir)
+        evaluation_dir = self.resolve_path("EVALUATION_DIR", "evaluations", data_dir)
+        
+        # Some paths default to relative paths if not set
+        models_dir = self.get_config_value("MODELS_DIR", "./models", str)
+        logs_dir = self.get_config_value("LOGS_DIR", "./logs", str)
+        wandb_dir = self.get_config_value("WANDB_DIR", "./wandb", str)
         
         # Create config with type-safe value extraction
         config = Config(
@@ -404,12 +355,12 @@ class ConfigLoader:
             
             # Data Paths
             data_source=self.get_config_value("DATA_SOURCE", "local", str),
-            data_dir=self.get_config_value("DATA_DIR", "/home/pyuser/data/Paradise_Images", str),
-            models_dir=self.get_config_value("MODELS_DIR", "./models", str),
-            csv_dir=self.get_config_value("CSV_DIR", "/home/pyuser/data/Paradise_CSV", str),
-            ini_dir=self.get_config_value("INI_DIR", "./config/", str),
-            graph_dir=self.get_config_value("GRAPH_DIR", "./graphs", str),
-            debug_dir=self.get_config_value("DEBUG_DIR", "./debug_output", str),
+            data_dir=nifti_dir,  # Legacy compatibility - map nifti_dir to data_dir
+            models_dir=models_dir,
+            csv_dir=csv_dir,
+            ini_dir=ini_dir,
+            graph_dir=graph_dir,
+            debug_dir=debug_dir,
             labels_csv=self.get_config_value("LABELS_CSV", "Labeled_Data_RAW.csv", str),
             labels_csv_separator=self.get_config_value("LABELS_CSV_SEPARATOR", ";", str),
             
@@ -436,133 +387,63 @@ class ConfigLoader:
             use_segmentation_masking=self.get_config_value("USE_SEGMENTATION_MASKING", True, bool),
             masking_strategy=self.get_config_value("MASKING_STRATEGY", "attention", str),
             attention_strength=self.get_config_value("ATTENTION_STRENGTH", 0.7, float),
-            masks_path=self.get_config_value("MASKS_PATH", "/home/pyuser/data/Paradise_Masks", str),
+            masks_path=masks_dir,  # Legacy compatibility - map masks_dir to masks_path
             
-            # Image Format Configuration (V2.0 - NIFTI Support)
+            # Image Format Configuration
             image_format=self.get_config_value("IMAGE_FORMAT", "nifti", str),
             image_extension=self.get_config_value("IMAGE_EXTENSION", ".nii.gz", str),
             
             # Normalization Strategy Configuration
             normalization_strategy=self.get_config_value("NORMALIZATION_STRATEGY", "medical", str),
-            custom_mean=self.parse_comma_separated_list(
-                self.get_config_value("CUSTOM_MEAN", "", str)
-            ),
-            custom_std=self.parse_comma_separated_list(
-                self.get_config_value("CUSTOM_STD", "", str)
-            )
+            custom_mean=self.get_config_value("CUSTOM_MEAN", None, list),
+            custom_std=self.get_config_value("CUSTOM_STD", None, list)
         )
-        
-        # Set internal fields after creation (they have init=False)
-        object.__setattr__(config, '_env_vars', self._env_vars.copy())
-        object.__setattr__(config, '_ini_vars', self._ini_vars.copy())
-        object.__setattr__(config, '_missing_keys', self._missing_keys.copy())
         
         # Log missing keys
         if self._missing_keys:
-            logger.warning(f"Missing configuration keys (using defaults): {', '.join(self._missing_keys)}")
-        
-        # Validate configuration
-        self.validate_config(config)
+            logger.info(f"Missing configuration keys (using defaults): {', '.join(self._missing_keys)}")
         
         return config
     
-    def validate_config(self, config: Config) -> None:
+    def resolve_path(self, path_key: str, default_subfolder: str, data_dir: str) -> str:
         """
-        Validate configuration values and log any issues.
+        Resolve a path variable. If the path is empty or not set, use DATA_DIR + subfolder.
+        If the path is set, use it as-is.
         
         Args:
-            config: Configuration instance to validate
+            path_key: The environment variable key for the path
+            default_subfolder: The subfolder name to append to DATA_DIR if path is empty
+            data_dir: The master data directory path
             
-        # Unit test stub:
-        # def test_validate_config():
-        #     loader = ConfigLoader()
-        #     config = Config(batch_size=0)  # Invalid
-        #     with pytest.raises(ValueError):
-        #         loader.validate_config(config)
+        Returns:
+            Resolved path
         """
-        errors = []
+        # Get the path value from environment variables
+        path_value = self._env_vars.get(path_key, "")
         
-        # Validate positive integers
-        if config.batch_size <= 0:
-            errors.append(f"batch_size must be positive, got {config.batch_size}")
-        
-        if config.n_epochs <= 0:
-            errors.append(f"n_epochs must be positive, got {config.n_epochs}")
-        
-        if config.patience < 0:
-            errors.append(f"patience must be non-negative, got {config.patience}")
-        
-        # Validate positive floats
-        if config.learning_rate <= 0:
-            errors.append(f"learning_rate must be positive, got {config.learning_rate}")
-        
-        # Validate choices
-        valid_devices = ["cuda", "cpu", "mps"]
-        if config.device not in valid_devices:
-            errors.append(f"device must be one of {valid_devices}, got {config.device}")
-        
-        valid_optimizers = ["adam", "adamw", "sgd"]
-        if config.optimizer.lower() not in valid_optimizers:
-            errors.append(f"optimizer must be one of {valid_optimizers}, got {config.optimizer}")
-        
-        # Validate zone focus method
-        valid_zone_focus_methods = ["masking", "spatial_reduction"]
-        if config.zone_focus_method.lower() not in valid_zone_focus_methods:
-            errors.append(f"zone_focus_method must be one of {valid_zone_focus_methods}, got {config.zone_focus_method}")
-        
-        # Validate zone masking configuration
-        valid_masking_strategies = ["zero", "attention"]
-        if config.masking_strategy.lower() not in valid_masking_strategies:
-            errors.append(f"masking_strategy must be one of {valid_masking_strategies}, got {config.masking_strategy}")
-        
-        if not (0.0 <= config.attention_strength <= 1.0):
-            errors.append(f"attention_strength must be between 0.0 and 1.0, got {config.attention_strength}")
-        
-        # Validate image format
-        valid_image_formats = ["nifti"]
-        if config.image_format not in valid_image_formats:
-            errors.append(f"image_format must be one of {valid_image_formats}, got {config.image_format}")
-        
-        # Validate normalization strategy
-        valid_normalization_strategies = ["imagenet", "medical", "simple", "custom"]
-        if config.normalization_strategy.lower() not in valid_normalization_strategies:
-            errors.append(f"normalization_strategy must be one of {valid_normalization_strategies}, got {config.normalization_strategy}")
-        
-        # Validate custom mean and std if strategy is "custom"
-        if config.normalization_strategy.lower() == "custom":
-            if config.custom_mean is None or len(config.custom_mean) != 3:
-                errors.append("custom_mean must be a list of 3 float values (R, G, B)")
-            if config.custom_std is None or len(config.custom_std) != 3:
-                errors.append("custom_std must be a list of 3 float values (R, G, B)")
-        
-        # Log validation results
-        if errors:
-            for error in errors:
-                logger.error(f"Configuration validation error: {error}")
-            raise ValueError(f"Configuration validation failed with {len(errors)} errors")
+        # If path is empty or not set, use DATA_DIR + subfolder
+        if not path_value or path_value.strip() == "":
+            resolved_path = os.path.join(data_dir, default_subfolder)
+            logger.debug(f"Path {path_key} not set, using: {resolved_path}")
+            return resolved_path
         else:
-            logger.info("Configuration validation passed")
+            logger.debug(f"Path {path_key} set to: {path_value}")
+            return path_value
     
     def copy_config_with_timestamp(self, config: Config) -> None:
         """
-        Copy resolved config.ini to INI_DIR with timestamp when training starts.
-        
-        Args:
-            config: Configuration instance with resolved values
+        Copy resolved configuration with timestamp when training starts.
+        This creates a snapshot of the actual configuration used for training.
         """
-        from datetime import datetime
-        import configparser
-        from pathlib import Path
-        
-        # Create timestamp
+        # Create timestamped filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamped_filename = f"config_resolved_{timestamp}.ini"
+        timestamped_path = Path(config.ini_dir) / timestamped_filename
         
-        # Create timestamped filename in ini_dir
-        ini_dir = Path(config.ini_dir)
-        ini_dir.mkdir(parents=True, exist_ok=True)
-        timestamped_path = ini_dir / f"config_{timestamp}.ini"
+        # Ensure config directory exists
+        os.makedirs(config.ini_dir, exist_ok=True)
         
-        # Create new config with resolved values
+        # Create new config parser
         new_config = configparser.ConfigParser()
         
         # Add training section
@@ -572,6 +453,8 @@ class ConfigLoader:
         new_config.set("TRAINING", "PATIENCE", str(config.patience))
         new_config.set("TRAINING", "LEARNING_RATE", str(config.learning_rate))
         new_config.set("TRAINING", "OPTIMIZER", config.optimizer)
+        new_config.set("TRAINING", "DROPOUT_RATE", str(config.dropout_rate))
+        new_config.set("TRAINING", "WEIGHT_DECAY", str(config.weight_decay))
         
         # Add model section
         new_config.add_section("MODEL")
@@ -589,7 +472,6 @@ class ConfigLoader:
         new_config.set("ZONES", "USE_SEGMENTATION_MASKING", str(config.use_segmentation_masking))
         new_config.set("ZONES", "MASKING_STRATEGY", config.masking_strategy)
         new_config.set("ZONES", "ATTENTION_STRENGTH", str(config.attention_strength))
-        new_config.set("ZONES", "MASKS_PATH", config.masks_path)
         
         # Add image format section
         new_config.add_section("IMAGE_FORMAT")
@@ -625,56 +507,24 @@ class ConfigLoader:
         except Exception as e:
             logger.error(f"Failed to copy configuration: {e}")
 
-
-# Singleton instance
-_config_instance: Optional[Config] = None
-
-
-def get_config(env_path: str = ".env", ini_path: str = "config.ini", force_reload: bool = False) -> Config:
+# Legacy function for backward compatibility
+def get_config(env_path: str = ".env", ini_path: str = "config.ini") -> Config:
     """
-    Get singleton configuration instance.
+    Legacy function to get configuration for backward compatibility.
     
     Args:
         env_path: Path to .env file
         ini_path: Path to config.ini file
-        force_reload: Whether to force reload configuration
         
     Returns:
-        Singleton Config instance
-        
-    # Unit test stub:
-    # def test_get_config_singleton():
-    #     config1 = get_config()
-    #     config2 = get_config()
-    #     assert config1 is config2  # Same instance
-    #     
-    #     config3 = get_config(force_reload=True)
-    #     assert config3 is not config1  # New instance
+        Config instance
     """
-    global _config_instance
-    
-    if _config_instance is None or force_reload:
-        logger.info("Initializing configuration...")
-        loader = ConfigLoader(env_path, ini_path)
-        _config_instance = loader.create_config()
-        logger.info("Configuration initialized successfully")
-    
-    return _config_instance
-
-
-def copy_config_on_training_start() -> None:
-    """
-    Copy resolved configuration with timestamp when training starts.
-    This creates a snapshot of the actual configuration used for training.
-    """
-    config = get_config()
-    loader = ConfigLoader()  # Don't need to pass ini_path since we're not loading from file
-    loader.copy_config_with_timestamp(config)
-
+    logger.warning("Using legacy config system. Consider migrating to src.config.get_config()")
+    loader = ConfigLoader(env_path, ini_path)
+    return loader.create_config()
 
 # Singleton instance - import this in other modules
 cfg = get_config()
 
-
 # Export main components
-__all__ = ['Config', 'ConfigLoader', 'get_config', 'copy_config_on_training_start', 'cfg']
+__all__ = ['Config', 'ConfigLoader', 'get_config', 'cfg']

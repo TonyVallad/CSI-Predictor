@@ -59,37 +59,65 @@ def create_optimized_config(base_config: Config, best_params: Dict[str, Any]) ->
     Returns:
         Updated configuration with optimized hyperparameters
     """
-    # Create updated config with optimized hyperparameters
-    updated_config = Config(
-        # Copy existing values
+    # Create optimized config with new hyperparameters
+    optimized_config = Config(
+        # Environment and Device Settings
         device=base_config.device,
         load_data_to_memory=base_config.load_data_to_memory,
+        
+        # Data Paths
         data_source=base_config.data_source,
         data_dir=base_config.data_dir,
+        nifti_dir=base_config.nifti_dir,
         models_dir=base_config.models_dir,
         csv_dir=base_config.csv_dir,
         ini_dir=base_config.ini_dir,
+        png_dir=base_config.png_dir,
         graph_dir=base_config.graph_dir,
+        debug_dir=base_config.debug_dir,
+        masks_dir=base_config.masks_dir,
+        logs_dir=base_config.logs_dir,
+        runs_dir=base_config.runs_dir,
+        evaluation_dir=base_config.evaluation_dir,
+        wandb_dir=base_config.wandb_dir,
+        
+        # Labels configuration
         labels_csv=base_config.labels_csv,
         labels_csv_separator=base_config.labels_csv_separator,
         
-        # Updated hyperparameters from Optuna
-        model_arch=best_params.get('model_arch', base_config.model_arch),
-        optimizer=best_params.get('optimizer', base_config.optimizer),
-        learning_rate=best_params.get('learning_rate', base_config.learning_rate),
+        # Data Filtering
+        excluded_file_ids=base_config.excluded_file_ids,
+        
+        # Training Hyperparameters (optimized)
         batch_size=best_params.get('batch_size', base_config.batch_size),
-        patience=best_params.get('patience', base_config.patience),
-        
-        # Keep other training params from base config
         n_epochs=base_config.n_epochs,
+        patience=base_config.patience,
+        learning_rate=best_params.get('learning_rate', base_config.learning_rate),
+        optimizer=best_params.get('optimizer', base_config.optimizer),
+        dropout_rate=best_params.get('dropout_rate', base_config.dropout_rate),
+        weight_decay=best_params.get('weight_decay', base_config.weight_decay),
         
-        # Store hyperparams in internal fields for access during training
-        _env_vars=base_config._env_vars.copy(),
-        _ini_vars={**base_config._ini_vars, **best_params},
-        _missing_keys=base_config._missing_keys.copy()
+        # Model Configuration
+        model_arch=base_config.model_arch,
+        use_official_processor=base_config.use_official_processor,
+        zone_focus_method=base_config.zone_focus_method,
+        
+        # Zone Masking Configuration
+        use_segmentation_masking=base_config.use_segmentation_masking,
+        masking_strategy=base_config.masking_strategy,
+        attention_strength=base_config.attention_strength,
+        
+        # Image Format Configuration
+        image_format=base_config.image_format,
+        image_extension=base_config.image_extension,
+        
+        # Normalization Strategy Configuration
+        normalization_strategy=base_config.normalization_strategy,
+        custom_mean=base_config.custom_mean,
+        custom_std=base_config.custom_std
     )
     
-    return updated_config
+    return optimized_config
 
 
 def train_with_optimized_hyperparameters(
@@ -119,31 +147,61 @@ def train_with_optimized_hyperparameters(
     if full_epochs and config.n_epochs < 100:
         logger.info(f"Increasing epochs from {config.n_epochs} to 100 for final training")
         # We need to modify the config, but it's frozen. Let's create a new one.
-        config = Config(
-            # Copy all values
+        optimized_config = Config(
+            # Environment and Device Settings
             device=config.device,
             load_data_to_memory=config.load_data_to_memory,
+            
+            # Data Paths
             data_source=config.data_source,
             data_dir=config.data_dir,
+            nifti_dir=config.nifti_dir,
             models_dir=config.models_dir,
             csv_dir=config.csv_dir,
             ini_dir=config.ini_dir,
+            png_dir=config.png_dir,
             graph_dir=config.graph_dir,
+            debug_dir=config.debug_dir,
+            masks_dir=config.masks_dir,
+            logs_dir=config.logs_dir,
+            runs_dir=config.runs_dir,
+            evaluation_dir=config.evaluation_dir,
+            wandb_dir=config.wandb_dir,
+            
+            # Labels configuration
             labels_csv=config.labels_csv,
             labels_csv_separator=config.labels_csv_separator,
-            model_arch=config.model_arch,
-            optimizer=config.optimizer,
-            learning_rate=config.learning_rate,
-            batch_size=config.batch_size,
+            
+            # Data Filtering
+            excluded_file_ids=config.excluded_file_ids,
+            
+            # Training Hyperparameters (optimized)
+            batch_size=best_params.get('batch_size', config.batch_size),
+            n_epochs=config.n_epochs,
             patience=config.patience,
+            learning_rate=best_params.get('learning_rate', config.learning_rate),
+            optimizer=best_params.get('optimizer', config.optimizer),
+            dropout_rate=best_params.get('dropout_rate', config.dropout_rate),
+            weight_decay=best_params.get('weight_decay', config.weight_decay),
             
-            # Increase epochs for final training
-            n_epochs=100,
+            # Model Configuration
+            model_arch=config.model_arch,
+            use_official_processor=config.use_official_processor,
+            zone_focus_method=config.zone_focus_method,
             
-            # Keep hyperparams
-            _env_vars=config._env_vars.copy(),
-            _ini_vars=config._ini_vars.copy(),
-            _missing_keys=config._missing_keys.copy()
+            # Zone Masking Configuration
+            use_segmentation_masking=config.use_segmentation_masking,
+            masking_strategy=config.masking_strategy,
+            attention_strength=config.attention_strength,
+            
+            # Image Format Configuration
+            image_format=config.image_format,
+            image_extension=config.image_extension,
+            
+            # Normalization Strategy Configuration
+            normalization_strategy=config.normalization_strategy,
+            custom_mean=config.custom_mean,
+            custom_std=config.custom_std
         )
     
     # Log the optimized configuration
