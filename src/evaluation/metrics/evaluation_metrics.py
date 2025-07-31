@@ -6,7 +6,7 @@ This module contains evaluation metrics functionality extracted from the origina
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List
+from typing import Dict, List, Optional
 from sklearn.metrics import confusion_matrix, classification_report
 from ..metrics.confusion_matrix import compute_confusion_matrix
 
@@ -218,6 +218,30 @@ def create_overall_confusion_matrix(predictions: np.ndarray, targets: np.ndarray
     overall_cm = confusion_matrix(all_targets, all_predictions, labels=[0, 1, 2, 3, 4])
     
     return overall_cm
+
+
+def create_ahf_confusion_matrix(predictions: np.ndarray, targets: np.ndarray, csv_data: pd.DataFrame) -> Optional[np.ndarray]:
+    """
+    Create AHF confusion matrix by comparing predictions with CSV ground truth.
+    
+    Args:
+        predictions: Predicted CSI class indices [num_samples, num_zones]
+        targets: Ground truth CSI class indices [num_samples, num_zones]
+        csv_data: CSV data with ground truth AHF values
+        
+    Returns:
+        AHF confusion matrix [num_classes, num_classes] or None if not possible
+    """
+    from sklearn.metrics import confusion_matrix
+    
+    try:
+        # This would need to be implemented based on your AHF calculation logic
+        # For now, return None to indicate it's not implemented
+        logger.warning("AHF confusion matrix creation not yet implemented")
+        return None
+    except Exception as e:
+        logger.warning(f"Error creating AHF confusion matrix: {e}")
+        return None
 
 
 __version__ = "1.0.0"

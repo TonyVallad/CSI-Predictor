@@ -163,5 +163,45 @@ def create_overall_confusion_matrix(
     
     logger.info(f"Saved overall confusion matrix to {plot_path}")
 
+
+def save_ahf_confusion_matrix(
+    confusion_matrix: np.ndarray,
+    save_dir: str,
+    split_name: str = "validation",
+    run_name: str = "model"
+) -> None:
+    """
+    Save AHF confusion matrix as a plot.
+    
+    Args:
+        confusion_matrix: AHF confusion matrix
+        save_dir: Directory to save the plot
+        split_name: Name of the data split
+        run_name: Name of the run
+    """
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
+    
+    # Create figure
+    plt.figure(figsize=(10, 8))
+    
+    # Create heatmap
+    sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='Blues',
+               xticklabels=class_names, yticklabels=class_names)
+    
+    plt.title(f'AHF Confusion Matrix - {run_name} ({split_name})')
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    
+    # Save plot
+    plot_path = save_path / f"ahf_confusion_matrix_{split_name}_{run_name}.png"
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved AHF confusion matrix to {plot_path}")
+
+
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 

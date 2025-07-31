@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
+import os
 
 from ..models import build_model, CSIModel
 from ..utils.logging import logger
@@ -393,6 +394,31 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
     from .visualization.confusion_matrix import create_overall_confusion_matrix as create_overall_confusion_matrix_plot
     create_overall_confusion_matrix_plot(val_confusion_matrices, str(graphs_dir), "validation", config.model_arch)
     create_overall_confusion_matrix_plot(test_confusion_matrices, str(graphs_dir), "test", config.model_arch)
+    
+    # Generate AHF confusion matrix and save in graphs root
+    logger.info("Generating AHF confusion matrix...")
+    from .metrics.evaluation_metrics import create_ahf_confusion_matrix
+    try:
+        # Load CSV data for AHF analysis
+        from ..data.preprocessing import load_csv_data, convert_nans_to_unknown
+        csv_path = os.path.join(config.csv_dir, config.labels_csv)
+        csv_data = load_csv_data(csv_path)
+        csv_data = convert_nans_to_unknown(csv_data)
+        
+        # Create AHF confusion matrix for validation
+        val_ahf_conf_matrix = create_ahf_confusion_matrix(val_predictions, val_targets, csv_data)
+        if val_ahf_conf_matrix is not None:
+            from .visualization.confusion_matrix import save_ahf_confusion_matrix
+            save_ahf_confusion_matrix(val_ahf_conf_matrix, str(graphs_dir), "validation", config.model_arch)
+        
+        # Create AHF confusion matrix for test
+        test_ahf_conf_matrix = create_ahf_confusion_matrix(test_predictions, test_targets, csv_data)
+        if test_ahf_conf_matrix is not None:
+            from .visualization.confusion_matrix import save_ahf_confusion_matrix
+            save_ahf_confusion_matrix(test_ahf_conf_matrix, str(graphs_dir), "test", config.model_arch)
+            
+    except Exception as e:
+        logger.warning(f"Could not generate AHF confusion matrix: {e}")
     
     # Generate summary dashboard (save in run directory root, not in graphs subfolder)
     logger.info("Generating summary dashboard...")

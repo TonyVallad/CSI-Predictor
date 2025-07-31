@@ -569,8 +569,8 @@ def create_summary_dashboard(
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     fig.text(0.5, 0.98, f'Generated on {timestamp}', ha='center', va='top', fontsize=10, style='italic')
     
-    # Create grid layout
-    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+    # Create grid layout (2x3 instead of 3x3)
+    gs = fig.add_gridspec(2, 3, hspace=0.3, wspace=0.3)
     
     epochs = list(range(1, len(train_losses) + 1))
     
@@ -689,61 +689,6 @@ def create_summary_dashboard(
     ax6.set_ylabel('True Positive Rate')
     ax6.legend(loc="lower right")
     ax6.grid(True, alpha=0.3)
-    
-    # 7. Zone-wise Performance (Bottom row spanning all columns)
-    ax7 = fig.add_subplot(gs[2, :])
-    
-    # Calculate average metrics per zone
-    zone_accuracies = []
-    zone_f1_scores = []
-    
-    for zone_idx, zone_name in enumerate(zone_names):
-        zone_targets = targets[:, zone_idx]
-        zone_predictions = np.argmax(predictions_proba[:, zone_idx, :], axis=1)
-        
-        # Filter out ignore_class
-        valid_mask = zone_targets != ignore_class
-        if valid_mask.any():
-            zone_targets_valid = zone_targets[valid_mask]
-            zone_predictions_valid = zone_predictions[valid_mask]
-            
-            # Calculate accuracy
-            accuracy = np.mean(zone_targets_valid == zone_predictions_valid)
-            zone_accuracies.append(accuracy)
-            
-            # Calculate F1 score
-            from sklearn.metrics import f1_score
-            f1 = f1_score(zone_targets_valid, zone_predictions_valid, average='macro')
-            zone_f1_scores.append(f1)
-        else:
-            zone_accuracies.append(0.0)
-            zone_f1_scores.append(0.0)
-    
-    # Create bar plot
-    x = np.arange(len(zone_names))
-    width = 0.35
-    
-    bars1 = ax7.bar(x - width/2, zone_accuracies, width, label='Accuracy', alpha=0.8)
-    bars2 = ax7.bar(x + width/2, zone_f1_scores, width, label='F1 Score', alpha=0.8)
-    
-    ax7.set_xlabel('Zones')
-    ax7.set_ylabel('Score')
-    ax7.set_title('Zone-wise Performance')
-    ax7.set_xticks(x)
-    ax7.set_xticklabels([name.replace('_', ' ').title() for name in zone_names], rotation=45)
-    ax7.legend()
-    ax7.grid(True, alpha=0.3)
-    
-    # Add value labels on bars
-    for bar in bars1:
-        height = bar.get_height()
-        ax7.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                f'{height:.3f}', ha='center', va='bottom', fontsize=8)
-    
-    for bar in bars2:
-        height = bar.get_height()
-        ax7.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                f'{height:.3f}', ha='center', va='bottom', fontsize=8)
     
     plt.tight_layout()
     
