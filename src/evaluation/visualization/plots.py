@@ -126,11 +126,32 @@ def create_roc_curves(
         
         # Calculate micro-average ROC curve and AUC
         if len(all_fpr) > 0:
-            all_fpr = np.concatenate(all_fpr)
-            all_tpr = np.concatenate(all_tpr)
-            micro_auc = auc(all_fpr, all_tpr)
-            plt.plot(all_fpr, all_tpr, color='red', lw=2,
-                    label=f'Micro-average (AUC = {micro_auc:.3f})')
+            try:
+                # Concatenate all FPR and TPR values
+                all_fpr = np.concatenate(all_fpr)
+                all_tpr = np.concatenate(all_tpr)
+                
+                # Sort by FPR to ensure monotonicity
+                sort_indices = np.argsort(all_fpr)
+                all_fpr = all_fpr[sort_indices]
+                all_tpr = all_tpr[sort_indices]
+                
+                # Remove duplicates while preserving order
+                unique_indices = np.unique(all_fpr, return_index=True)[1]
+                unique_indices = np.sort(unique_indices)
+                all_fpr = all_fpr[unique_indices]
+                all_tpr = all_tpr[unique_indices]
+                
+                # Ensure we have at least 2 points for AUC calculation
+                if len(all_fpr) >= 2:
+                    # Calculate micro-average AUC
+                    micro_auc = auc(all_fpr, all_tpr)
+                    plt.plot(all_fpr, all_tpr, color='red', lw=2,
+                            label=f'Micro-average (AUC = {micro_auc:.3f})')
+                else:
+                    logger.warning(f"Not enough points for micro-average AUC calculation in zone {zone_name}")
+            except Exception as e:
+                logger.warning(f"Error calculating micro-average ROC curve for zone {zone_name}: {e}")
         
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
