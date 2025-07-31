@@ -76,6 +76,7 @@ class Config:
     data_source: str = "local"
     data_dir: str = "./data"  # Master data directory (defaults to ./data if not set in .env)
     nifti_dir: str = ""  # Directory containing NIFTI images (resolved dynamically)
+    dicom_dir: str = ""  # Directory containing DICOM images (resolved dynamically)
     models_dir: str = ""  # Directory for saving/loading models (resolved dynamically)
     csv_dir: str = ""  # Directory containing CSV files (resolved dynamically)
     ini_dir: str = ""  # Directory containing config files (resolved dynamically)
