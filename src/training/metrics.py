@@ -249,7 +249,7 @@ def compute_ahf_classification_metrics(predictions: torch.Tensor, targets: torch
         'ahf_class_2_precision': precision[2].item(),
         'ahf_class_2_recall': recall[2].item(),
         'ahf_class_2_f1': f1[2].item(),
-        'ahf_confusion_matrix': cm.cpu().numpy().tolist()
+        'ahf_confusion_matrix': cm.cpu().numpy().astype(int).tolist()
     }
     
     return metrics

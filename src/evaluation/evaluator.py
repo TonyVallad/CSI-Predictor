@@ -408,12 +408,14 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
         # Create AHF confusion matrix for validation
         val_ahf_conf_matrix = create_ahf_confusion_matrix(val_predictions, val_targets, csv_data)
         if val_ahf_conf_matrix is not None:
+            val_ahf_conf_matrix = val_ahf_conf_matrix.astype(int)  # Ensure integer type
             from .visualization.confusion_matrix import save_ahf_confusion_matrix
             save_ahf_confusion_matrix(val_ahf_conf_matrix, str(graphs_dir), "validation", config.model_arch)
         
         # Create AHF confusion matrix for test
         test_ahf_conf_matrix = create_ahf_confusion_matrix(test_predictions, test_targets, csv_data)
         if test_ahf_conf_matrix is not None:
+            test_ahf_conf_matrix = test_ahf_conf_matrix.astype(int)  # Ensure integer type
             from .visualization.confusion_matrix import save_ahf_confusion_matrix
             save_ahf_confusion_matrix(test_ahf_conf_matrix, str(graphs_dir), "test", config.model_arch)
             
@@ -428,6 +430,10 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
     # Create overall confusion matrix for dashboard
     val_overall_conf_matrix = create_overall_confusion_matrix(val_predictions, val_targets)
     test_overall_conf_matrix = create_overall_confusion_matrix(test_predictions, test_targets)
+    
+    # Ensure confusion matrices are integers
+    val_overall_conf_matrix = val_overall_conf_matrix.astype(int)
+    test_overall_conf_matrix = test_overall_conf_matrix.astype(int)
     
     # For dashboard, we need training history - try to load it
     train_losses, val_losses = [], []
@@ -457,7 +463,7 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
             # Load training AHF confusion matrix
             train_ahf_conf_matrix = None
             if 'train_ahf_confusion_matrix' in history:
-                train_ahf_conf_matrix = np.array(history['train_ahf_confusion_matrix'])
+                train_ahf_conf_matrix = np.array(history['train_ahf_confusion_matrix'], dtype=int)
                 logger.info("Loaded training AHF confusion matrix from training history")
             
             logger.info("Loaded training history from INI_DIR for dashboard")
