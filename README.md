@@ -4,6 +4,8 @@
 
 A modular PyTorch project for predicting 6-zone CSI (Chest Severity Index) scores on chest X-ray images using deep learning.
 
+</div>
+
 ## 🏗️ Project Structure
 
 The CSI-Predictor project has been reorganized into a clean, modular architecture:
