@@ -28,8 +28,7 @@ from src.utils.checkpoint import save_checkpoint
 from src.utils.discord_notifier import send_training_notification
 from .loss import WeightedCSILoss
 from .metrics import compute_f1_metrics, compute_precision_recall, compute_csi_average_metrics, compute_ahf_classification_metrics
-from .optimizer import create_optimizer
-from .scheduler import create_scheduler
+from .optimizer import create_optimizer, create_scheduler
 from .callbacks import EarlyStopping, MetricsTracker
 
 def set_random_seeds(seed: int = 42) -> None:
@@ -299,7 +298,6 @@ def train_model(config: Config) -> Path:
     
     # Setup optimizer and scheduler
     from src.training.optimizer import create_optimizer
-    from src.training.scheduler import create_scheduler
     optimizer = create_optimizer(model, config)
     scheduler = create_scheduler(optimizer, config)
     
