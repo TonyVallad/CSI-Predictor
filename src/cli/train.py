@@ -49,7 +49,7 @@ def create_train_parser():
         ArgumentParser for training commands
     """
     parser = argparse.ArgumentParser(description="CSI-Predictor Training")
-    parser.add_argument("--config", default="config/config.ini", help="Path to config.ini file")
+    parser.add_argument("--config", help="Path to config.ini file (if not provided, will use INI_DIR from .env)")
     parser.add_argument("--env", default=".env", help="Path to .env file")
     parser.add_argument("--hyperparams", help="Path to JSON file with best hyperparameters (for optimized training)")
     parser.add_argument("--optimized", action="store_true", help="Use optimized hyperparameters")

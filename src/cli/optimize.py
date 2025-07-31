@@ -102,7 +102,7 @@ def create_optimize_parser():
     parser = argparse.ArgumentParser(description="CSI-Predictor Optimization")
     
     # General arguments
-    parser.add_argument("--config", default="config/config.ini", help="Path to config.ini file")
+    parser.add_argument("--config", help="Path to config.ini file (if not provided, will use INI_DIR from .env)")
     parser.add_argument("--env", default=".env", help="Path to .env file")
     
     # Hyperparameter optimization specific arguments (Optuna)

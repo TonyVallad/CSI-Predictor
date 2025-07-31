@@ -24,7 +24,7 @@ def main():
     parser = argparse.ArgumentParser(description="CSI-Predictor: Predict 6-zone CSI scores on chest X-rays")
     parser.add_argument("--mode", choices=["train", "eval", "both", "hyperopt", "train-optimized", "sweep", "sweep-agent"], default="both",
                         help="Run mode: train, eval, both, hyperopt (Optuna), train-optimized, sweep (W&B Sweeps), or sweep-agent")
-    parser.add_argument("--config", default="config/config.ini", help="Path to config.ini file")
+    parser.add_argument("--config", help="Path to config.ini file (if not provided, will use INI_DIR from .env)")
     parser.add_argument("--env", default=".env", help="Path to .env file")
     
     # Hyperparameter optimization specific arguments (Optuna)

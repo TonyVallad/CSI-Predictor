@@ -47,7 +47,7 @@ def get_config(env_path: str = ".env", ini_path: str = None, force_reload: bool 
     
     Args:
         env_path: Path to .env file
-        ini_path: Path to config.ini file (if None, will look for config/config.ini relative to project root)
+        ini_path: Path to config.ini file (if None, will be determined from .env INI_DIR)
         force_reload: Whether to force reload configuration
         
     Returns:
@@ -55,26 +55,47 @@ def get_config(env_path: str = ".env", ini_path: str = None, force_reload: bool 
     """
     global _config_instance
     
-    # If ini_path is not provided, try to find it relative to the project root
-    if ini_path is None:
-        # Try to find the project root by looking for config/config.ini
-        possible_paths = [
-            "config/config.ini",
-            "../config/config.ini",
-            "../../config/config.ini",
-            "src/../config/config.ini",
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                ini_path = path
-                break
-        else:
-            # If not found, use the default
-            ini_path = "config/config.ini"
-    
     if _config_instance is None or force_reload:
         logger.info("Initializing configuration...")
+        
+        # First, load environment variables to get INI_DIR
+        temp_loader = ConfigLoader(env_path, "dummy.ini")  # Temporary loader just for env vars
+        env_vars = temp_loader.load_env_vars()
+        
+        # Determine ini_path from INI_DIR if not provided
+        if ini_path is None:
+            ini_dir = env_vars.get("INI_DIR", "")
+            if ini_dir:
+                # If INI_DIR is set, use it
+                ini_path = os.path.join(ini_dir, "config.ini")
+                logger.info(f"Using INI_DIR from .env: {ini_path}")
+            else:
+                # If INI_DIR is empty, use DATA_DIR/config (following the same pattern as other paths)
+                data_dir = env_vars.get("DATA_DIR", "./data")
+                ini_path = os.path.join(data_dir, "config", "config.ini")
+                logger.info(f"INI_DIR not set in .env, using DATA_DIR/config: {ini_path}")
+                
+                # If the DATA_DIR/config path doesn't exist, try fallback paths
+                if not os.path.exists(ini_path):
+                    logger.warning(f"Config file not found at {ini_path}, trying fallback paths...")
+                    possible_paths = [
+                        "config/config.ini",
+                        "../config/config.ini",
+                        "../../config/config.ini",
+                        "src/../config/config.ini",
+                    ]
+                    
+                    for path in possible_paths:
+                        if os.path.exists(path):
+                            ini_path = path
+                            logger.info(f"Using fallback path: {ini_path}")
+                            break
+                    else:
+                        # If not found, use the default
+                        ini_path = "config/config.ini"
+                        logger.warning(f"No config file found, using default: {ini_path}")
+        
+        # Create the actual config loader with the determined paths
         loader = ConfigLoader(env_path, ini_path)
         _config_instance = loader.create_config()
         
@@ -176,21 +197,21 @@ LOAD_DATA_TO_MEMORY=True
 
 # Data source and paths
 DATA_DIR=./data
-INI_DIR=
-CSV_DIR=
-DICOM_DIR=
-DICOM_HIST_DIR=
-NIFTI_HIST_DIR=
-NIFTI_DIR=
-PNG_DIR=
-MODELS_DIR=
-GRAPH_DIR=
-DEBUG_DIR=
-MASKS_DIR=
-LOGS_DIR=
-RUNS_DIR=
-EVALUATION_DIR=
-WANDB_DIR=
+INI_DIR=  # Leave empty to use DATA_DIR/config, or specify custom path
+CSV_DIR=  # Leave empty to use DATA_DIR/csv, or specify custom path
+DICOM_DIR=  # Leave empty to use DATA_DIR/dicom, or specify custom path
+DICOM_HIST_DIR=  # Leave empty to use DATA_DIR/dicom_hist, or specify custom path
+NIFTI_HIST_DIR=  # Leave empty to use DATA_DIR/nifti_hist, or specify custom path
+NIFTI_DIR=  # Leave empty to use DATA_DIR/nifti, or specify custom path
+PNG_DIR=  # Leave empty to use DATA_DIR/png, or specify custom path
+MODELS_DIR=  # Leave empty to use DATA_DIR/models, or specify custom path
+GRAPH_DIR=  # Leave empty to use DATA_DIR/graphs, or specify custom path
+DEBUG_DIR=  # Leave empty to use DATA_DIR/debug, or specify custom path
+MASKS_DIR=  # Leave empty to use DATA_DIR/masks, or specify custom path
+LOGS_DIR=  # Leave empty to use DATA_DIR/logs, or specify custom path
+RUNS_DIR=  # Leave empty to use DATA_DIR/runs, or specify custom path
+EVALUATION_DIR=  # Leave empty to use DATA_DIR/evaluations, or specify custom path
+WANDB_DIR=  # Leave empty to use DATA_DIR/wandb, or specify custom path
 
 # Labels configuration
 LABELS_CSV=Labeled_Data_RAW.csv

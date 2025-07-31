@@ -29,7 +29,7 @@ def create_evaluate_parser():
         ArgumentParser for evaluation commands
     """
     parser = argparse.ArgumentParser(description="CSI-Predictor Evaluation")
-    parser.add_argument("--config", default="config/config.ini", help="Path to config.ini file")
+    parser.add_argument("--config", help="Path to config.ini file (if not provided, will use INI_DIR from .env)")
     parser.add_argument("--env", default=".env", help="Path to .env file")
     parser.add_argument("--model-path", help="Path to trained model file")
     parser.add_argument("--output-dir", help="Output directory for evaluation results")
