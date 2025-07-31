@@ -409,11 +409,16 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
     train_f1_scores, val_f1_scores = [], []
     train_precisions, val_precisions = [], []
     
-    # Try to load training history from the model checkpoint
+    # Try to load training history from INI_DIR
     try:
-        checkpoint = torch.load(config.model_path, map_location='cpu')
-        if 'training_history' in checkpoint:
-            history = checkpoint['training_history']
+        import json
+        ini_dir_path = Path(config.ini_dir)
+        training_history_path = ini_dir_path / "training_history.json"
+        
+        if training_history_path.exists():
+            with open(training_history_path, 'r') as f:
+                history = json.load(f)
+            
             train_losses = history.get('train_losses', [])
             val_losses = history.get('val_losses', [])
             train_accuracies = history.get('train_accuracies', [])
@@ -422,11 +427,11 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
             val_f1_scores = history.get('val_f1_scores', [])
             train_precisions = history.get('train_precisions', [])
             val_precisions = history.get('val_precisions', [])
-            logger.info("Loaded training history from checkpoint for dashboard")
+            logger.info("Loaded training history from INI_DIR for dashboard")
         else:
-            logger.warning("No training history found in checkpoint, using empty lists for dashboard")
+            logger.warning("Training history file not found in INI_DIR, using empty lists for dashboard")
     except Exception as e:
-        logger.warning(f"Could not load training history: {e}, using empty lists for dashboard")
+        logger.warning(f"Could not load training history from INI_DIR: {e}, using empty lists for dashboard")
     
     # Create validation dashboard (always create, even without training history)
     try:
