@@ -43,8 +43,8 @@ def create_roc_curves(
     save_path.mkdir(parents=True, exist_ok=True)
     
     # Create organized subfolders
-    overall_dir = save_path / "roc_curves" / "overall"
-    zones_dir = save_path / "roc_curves" / "individual_zones"
+    overall_dir = save_path / "overall"
+    zones_dir = save_path / "individual_zones"
     overall_dir.mkdir(parents=True, exist_ok=True)
     zones_dir.mkdir(parents=True, exist_ok=True)
     
@@ -202,8 +202,8 @@ def create_precision_recall_curves(
     save_path.mkdir(parents=True, exist_ok=True)
     
     # Create organized subfolders
-    overall_dir = save_path / "precision_recall_curves" / "overall"
-    zones_dir = save_path / "precision_recall_curves" / "individual_zones"
+    overall_dir = save_path / "overall"
+    zones_dir = save_path / "individual_zones"
     overall_dir.mkdir(parents=True, exist_ok=True)
     zones_dir.mkdir(parents=True, exist_ok=True)
     
