@@ -222,23 +222,72 @@ def create_overall_confusion_matrix(predictions: np.ndarray, targets: np.ndarray
 
 def create_ahf_confusion_matrix(predictions: np.ndarray, targets: np.ndarray, csv_data: pd.DataFrame) -> Optional[np.ndarray]:
     """
-    Create AHF confusion matrix by comparing predictions with CSV ground truth.
+    Create AHF confusion matrix by comparing predictions with targets.
+    
+    AHF Classification:
+    - AHF_Class = 0: avg CSI <= 1.3 (Low risk)
+    - AHF_Class = 1: 1.3 < avg CSI <= 2.2 (Medium risk)  
+    - AHF_Class = 2: avg CSI > 2.2 (High risk)
     
     Args:
         predictions: Predicted CSI class indices [num_samples, num_zones]
         targets: Ground truth CSI class indices [num_samples, num_zones]
-        csv_data: CSV data with ground truth AHF values
+        csv_data: CSV data with ground truth AHF values (not used in this implementation)
         
     Returns:
-        AHF confusion matrix [num_classes, num_classes] or None if not possible
+        AHF confusion matrix [3, 3] or None if not possible
     """
     from sklearn.metrics import confusion_matrix
     
     try:
-        # This would need to be implemented based on your AHF calculation logic
-        # For now, return None to indicate it's not implemented
-        logger.warning("AHF confusion matrix creation not yet implemented")
-        return None
+        def calculate_ahf_class(avg_csi: float) -> int:
+            """Calculate AHF class based on average CSI."""
+            if avg_csi <= 1.3:
+                return 0
+            elif avg_csi <= 2.2:
+                return 1
+            else:
+                return 2
+        
+        # Calculate predicted CSI averages and AHF classes
+        pred_ahf_classes = []
+        target_ahf_classes = []
+        
+        for i in range(predictions.shape[0]):
+            # Get predictions and targets for this sample
+            sample_preds = predictions[i]  # [n_zones]
+            sample_targets = targets[i]    # [n_zones]
+            
+            # Calculate average excluding unknown class (4)
+            pred_valid_mask = sample_preds != 4
+            target_valid_mask = sample_targets != 4
+            
+            if pred_valid_mask.sum() > 0:
+                pred_avg = sample_preds[pred_valid_mask].mean()
+            else:
+                pred_avg = 0.0  # Default if all zones are unknown
+                
+            if target_valid_mask.sum() > 0:
+                target_avg = sample_targets[target_valid_mask].mean()
+            else:
+                target_avg = 0.0  # Default if all zones are unknown
+                
+            # Calculate AHF classes
+            pred_ahf_class = calculate_ahf_class(pred_avg)
+            target_ahf_class = calculate_ahf_class(target_avg)
+            
+            pred_ahf_classes.append(pred_ahf_class)
+            target_ahf_classes.append(target_ahf_class)
+        
+        # Convert to numpy arrays
+        pred_ahf_array = np.array(pred_ahf_classes)
+        target_ahf_array = np.array(target_ahf_classes)
+        
+        # Calculate confusion matrix (3 classes: Low, Medium, High risk)
+        cm = confusion_matrix(target_ahf_array, pred_ahf_array, labels=[0, 1, 2])
+        
+        return cm
+        
     except Exception as e:
         logger.warning(f"Error creating AHF confusion matrix: {e}")
         return None

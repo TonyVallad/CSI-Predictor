@@ -182,7 +182,8 @@ def save_ahf_confusion_matrix(
     save_path = Path(save_dir)
     save_path.mkdir(parents=True, exist_ok=True)
     
-    class_names = ["Normal", "Mild", "Moderate", "Severe", "Unknown"]
+    # AHF class names (3 classes: Low, Medium, High risk)
+    class_names = ["Low Risk", "Medium Risk", "High Risk"]
     
     # Create figure
     plt.figure(figsize=(10, 8))
@@ -192,8 +193,8 @@ def save_ahf_confusion_matrix(
                xticklabels=class_names, yticklabels=class_names)
     
     plt.title(f'AHF Confusion Matrix - {run_name} ({split_name})')
-    plt.xlabel('Predicted')
-    plt.ylabel('Actual')
+    plt.xlabel('Predicted AHF Class')
+    plt.ylabel('Actual AHF Class')
     
     # Save plot
     plot_path = save_path / f"ahf_confusion_matrix_{split_name}_{run_name}.png"
