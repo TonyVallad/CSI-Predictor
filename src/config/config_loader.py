@@ -50,7 +50,7 @@ class ConfigLoader:
             # Also check system environment variables
             system_env_keys = [
                 "DEVICE", "LOAD_DATA_TO_MEMORY", "DATA_SOURCE", "DATA_DIR",
-                "INI_DIR", "CSV_DIR", "DICOM_DIR", "NIFTI_DIR", "PNG_DIR", "MODELS_DIR", 
+                "INI_DIR", "CSV_DIR", "DICOM_DIR", "DICOM_HIST_DIR", "NIFTI_HIST_DIR", "NIFTI_DIR", "PNG_DIR", "MODELS_DIR", 
                 "GRAPH_DIR", "DEBUG_DIR", "MASKS_DIR", "LOGS_DIR", "RUNS_DIR",
                 "EVALUATION_DIR", "WANDB_DIR", "LABELS_CSV", "LABELS_CSV_SEPARATOR"
             ]
@@ -220,6 +220,8 @@ class ConfigLoader:
         ini_dir = self.resolve_path("INI_DIR", "config", data_dir)
         csv_dir = self.resolve_path("CSV_DIR", "csv", data_dir)
         dicom_dir = self.resolve_path("DICOM_DIR", "dicom", data_dir)
+        dicom_hist_dir = self.resolve_path("DICOM_HIST_DIR", "dicom_hist", data_dir)
+        nifti_hist_dir = self.resolve_path("NIFTI_HIST_DIR", "nifti_hist", data_dir)
         nifti_dir = self.resolve_path("NIFTI_DIR", "nifti", data_dir)
         png_dir = self.resolve_path("PNG_DIR", "png", data_dir)
         models_dir = self.resolve_path("MODELS_DIR", "models", data_dir)
@@ -242,6 +244,8 @@ class ConfigLoader:
             data_dir=data_dir,
             nifti_dir=nifti_dir,
             dicom_dir=dicom_dir,
+            dicom_hist_dir=dicom_hist_dir,
+            nifti_hist_dir=nifti_hist_dir,
             models_dir=models_dir,
             csv_dir=csv_dir,
             ini_dir=ini_dir,

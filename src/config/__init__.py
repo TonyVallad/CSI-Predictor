@@ -18,6 +18,21 @@ from .validation import validate_config, validate_paths, validate_file_permissio
 # Singleton instance
 _config_instance: Optional[Config] = None
 
+# Backward compatibility: create cfg property that points to the singleton instance
+class ConfigProxy:
+    """Proxy class for backward compatibility with cfg variable."""
+    
+    def __getattr__(self, name):
+        """Get attribute from the singleton config instance."""
+        return getattr(get_config(), name)
+    
+    def __setattr__(self, name, value):
+        """Set attribute on the singleton config instance."""
+        setattr(get_config(), name, value)
+
+# Create cfg variable for backward compatibility
+cfg = ConfigProxy()
+
 def get_config(env_path: str = ".env", ini_path: str = "config/config.ini", force_reload: bool = False) -> Config:
     """
     Get singleton configuration instance.
@@ -134,19 +149,22 @@ DEVICE=cuda
 LOAD_DATA_TO_MEMORY=True
 
 # Data source and paths
-DATA_DIR=/home/pyuser/data/Paradise
+DATA_DIR=./data
 INI_DIR=
 CSV_DIR=
+DICOM_DIR=
+DICOM_HIST_DIR=
+NIFTI_HIST_DIR=
 NIFTI_DIR=
 PNG_DIR=
-MODELS_DIR=./models
+MODELS_DIR=
 GRAPH_DIR=
 DEBUG_DIR=
 MASKS_DIR=
-LOGS_DIR=./logs
+LOGS_DIR=
 RUNS_DIR=
 EVALUATION_DIR=
-WANDB_DIR=./wandb
+WANDB_DIR=
 
 # Labels configuration
 LABELS_CSV=Labeled_Data_RAW.csv
