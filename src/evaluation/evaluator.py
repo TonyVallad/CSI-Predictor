@@ -283,12 +283,13 @@ def save_predictions(
     logger.info(f"Saved predictions to {output_path}")
 
 
-def evaluate_model(config) -> None:
+def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
     """
     Main evaluation function.
     
     Args:
         config: Configuration object
+        run_dir: Optional run directory to save outputs to. If None, uses config.evaluation_dir
     """
     # Setup device
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
@@ -331,17 +332,28 @@ def evaluate_model(config) -> None:
     val_reports = create_classification_report_per_zone(val_predictions, val_targets)
     test_reports = create_classification_report_per_zone(test_predictions, test_targets)
     
-    # Save results
-    output_dir = Path(config.output_dir)
+    # Determine output directory
+    if run_dir is not None:
+        # Use run directory structure
+        output_dir = run_dir / "evaluation"
+        confusion_matrices_dir = run_dir / "graphs" / "confusion_matrices"
+        logger.info(f"Saving evaluation outputs to run directory: {output_dir}")
+    else:
+        # Use legacy evaluation directory
+        output_dir = Path(config.evaluation_dir)
+        confusion_matrices_dir = Path(config.graph_dir) / "confusion_matrices"
+        logger.info(f"Saving evaluation outputs to evaluation directory: {output_dir}")
+    
     output_dir.mkdir(parents=True, exist_ok=True)
+    confusion_matrices_dir.mkdir(parents=True, exist_ok=True)
     
     # Save predictions
     save_predictions(val_predictions, val_targets, output_dir / "val_predictions.csv", zone_names)
     save_predictions(test_predictions, test_targets, output_dir / "test_predictions.csv", zone_names)
     
     # Save confusion matrix graphs
-    save_confusion_matrix_graphs(val_confusion_matrices, config, "evaluation", "validation")
-    save_confusion_matrix_graphs(test_confusion_matrices, config, "evaluation", "test")
+    save_confusion_matrix_graphs(val_confusion_matrices, config, "evaluation", "validation", str(confusion_matrices_dir))
+    save_confusion_matrix_graphs(test_confusion_matrices, config, "evaluation", "test", str(confusion_matrices_dir))
     
     # Log to wandb if enabled
     if hasattr(config, 'use_wandb') and config.use_wandb:

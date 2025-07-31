@@ -36,9 +36,19 @@ def train_cli(args, optimized=False):
         logger.info("Training with optimized hyperparameters completed.")
     else:
         logger.info("Starting training...")
-        # Copy configuration with timestamp for reproducibility
-        copy_config_on_training_start()
-        train_model(cfg)
+        
+        # Train the model (this will create the run directory and copy config)
+        run_dir = train_model(cfg)
+        
+        # If mode is "both", also run evaluation with its own run directory
+        if hasattr(args, 'mode') and args.mode == "both":
+            logger.info("Running evaluation...")
+            from src.evaluation.evaluator import evaluate_model
+            # Create separate evaluation run directory
+            from src.utils.file_utils import create_run_directory
+            eval_run_dir = create_run_directory(cfg, run_type="eval")
+            evaluate_model(cfg, eval_run_dir)
+        
         logger.info("Training completed.")
 
 def create_train_parser():

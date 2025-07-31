@@ -4,9 +4,13 @@ File operation utilities for CSI-Predictor.
 This module contains file operation functionality extracted from the original src/utils.py file.
 """
 
+import os
+import shutil
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
+from src.utils.logging import logger
 
 def create_dirs(*paths: str) -> None:
     """
@@ -82,6 +86,57 @@ def load_training_history(history_path: str) -> tuple:
         history['train_f1_scores'],
         history['val_f1_scores']
     )
+
+
+def create_run_directory(config, run_type: str = "both") -> Path:
+    """
+    Create a timestamped run directory with proper structure.
+    
+    Args:
+        config: Configuration object
+        run_type: Type of run ("train", "eval", "both")
+        
+    Returns:
+        Path to the created run directory
+    """
+    # Create timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Create run directory name with model architecture and run type
+    run_dir_name = f"{timestamp}_{config.model_arch}_{run_type}"
+    run_dir_path = Path(config.runs_dir) / run_dir_name
+    
+    # Create main run directory
+    run_dir_path.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Created run directory: {run_dir_path}")
+    
+    # Create subdirectories based on run type
+    if run_type in ["both", "train"]:
+        # Training-related directories
+        graphs_dir = run_dir_path / "graphs"
+        graphs_dir.mkdir(exist_ok=True)
+        
+        training_curves_dir = graphs_dir / "training_curves"
+        training_curves_dir.mkdir(exist_ok=True)
+        
+        # Save training history JSON
+        history_dir = run_dir_path / "training_history"
+        history_dir.mkdir(exist_ok=True)
+    
+    if run_type in ["both", "eval"]:
+        # Evaluation-related directories
+        evaluation_dir = run_dir_path / "evaluation"
+        evaluation_dir.mkdir(exist_ok=True)
+        
+        confusion_matrices_dir = run_dir_path / "graphs" / "confusion_matrices"
+        confusion_matrices_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Always create graphs directory for any graphs that might be saved
+    graphs_dir = run_dir_path / "graphs"
+    graphs_dir.mkdir(exist_ok=True)
+    
+    logger.info(f"Created run directory structure: {run_dir_path}")
+    return run_dir_path
 
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 

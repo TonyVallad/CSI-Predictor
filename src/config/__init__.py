@@ -112,10 +112,13 @@ def get_config(env_path: str = ".env", ini_path: str = None, force_reload: bool 
     
     return _config_instance
 
-def copy_config_on_training_start() -> None:
+def copy_config_on_training_start(run_dir: Optional[Path] = None) -> None:
     """
-    Copy the current configuration to a timestamped file in the config directory.
+    Copy the current configuration to a timestamped file in the config directory or run directory.
     This is called at the start of training to preserve the exact configuration used.
+    
+    Args:
+        run_dir: Optional run directory to copy config to. If None, uses config.ini_dir
     """
     config = get_config()
     
@@ -123,11 +126,16 @@ def copy_config_on_training_start() -> None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     timestamped_filename = f"config_{timestamp}.ini"
     
-    # Create the config directory if it doesn't exist
-    os.makedirs(config.ini_dir, exist_ok=True)
-    
-    # Create the timestamped config file
-    timestamped_path = Path(config.ini_dir) / timestamped_filename
+    # Determine where to save the config
+    if run_dir is not None:
+        # Save to run directory
+        timestamped_path = run_dir / "config.ini"
+        logger.info(f"Copying configuration to run directory: {timestamped_path}")
+    else:
+        # Save to config directory (backward compatibility)
+        os.makedirs(config.ini_dir, exist_ok=True)
+        timestamped_path = Path(config.ini_dir) / timestamped_filename
+        logger.info(f"Copying configuration to config directory: {timestamped_path}")
     
     # Create a new config parser
     new_config = configparser.ConfigParser()

@@ -19,17 +19,17 @@ import pandas as pd
 from src.config import Config, cfg
 from src.data.dataloader import create_data_loaders
 from src.data.preprocessing import load_csv_data, convert_nans_to_unknown
-from src.models import build_model
+from src.models.factory import create_model
 from src.utils.seed import seed_everything
 from src.utils.logging import logger
-from src.utils.file_utils import create_dirs
+from src.utils.file_utils import create_dirs, save_training_history
 from src.evaluation.visualization.plots import plot_training_curves
-from src.utils.file_utils import save_training_history
 from src.utils.checkpoint import save_checkpoint
 from src.utils.discord_notifier import send_training_notification
 from .loss import WeightedCSILoss
 from .metrics import compute_f1_metrics, compute_precision_recall, compute_csi_average_metrics, compute_ahf_classification_metrics
-from .optimizer import create_optimizer, create_scheduler
+from .optimizer import create_optimizer
+from .scheduler import create_scheduler
 from .callbacks import EarlyStopping, MetricsTracker
 
 def set_random_seeds(seed: int = 42) -> None:
@@ -255,33 +255,33 @@ def validate_epoch(
     return val_metrics
 
 
-def train_model(config: Config) -> None:
+def train_model(config: Config) -> Path:
     """
-    Main training function with enhanced logging and utilities.
+    Main training function.
     
     Args:
         config: Configuration object
+        
+    Returns:
+        Path to the run directory
     """
-    # Set random seeds for reproducibility
-    set_random_seeds(42)
+    # Create run directory for this training session
+    from src.utils.file_utils import create_run_directory
+    run_dir = create_run_directory(config, run_type="train")
     
-    # Log configuration
-    logger.info("Starting training with configuration:")
-    logger.info(f"Model architecture: {config.model_arch}")
-    logger.info(f"Batch size: {config.batch_size}")
-    logger.info(f"Learning rate: {config.learning_rate}")
-    logger.info(f"Optimizer: {config.optimizer}")
-    logger.info(f"Number of epochs: {config.n_epochs}")
+    # Copy configuration to run directory
+    from src.config import copy_config_on_training_start
+    copy_config_on_training_start(run_dir)
     
     # Setup device
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
     logger.info(f"Using device: {device}")
     
-    # Create data loaders
-    train_loader, val_loader, _ = create_data_loaders(config)
-    logger.info(f"Created data loaders: train={len(train_loader)}, val={len(val_loader)}")
+    # Load data
+    from src.data.dataloader import create_data_loaders
+    train_loader, val_loader, test_loader = create_data_loaders(config)
     
-    # Load CSV data for CSI average comparison
+    # Load CSV data for file ID tracking
     csv_data = None
     try:
         csv_path = os.path.join(config.csv_dir, config.labels_csv)
@@ -292,15 +292,19 @@ def train_model(config: Config) -> None:
         logger.warning(f"Could not load CSV data for CSI average comparison: {e}")
         logger.info("CSI average metrics will be computed without CSV ground truth comparison")
     
-    # Build model
-    model = build_model(config)
+    # Create model
+    from src.models.factory import create_model
+    model = create_model(config)
     model = model.to(device)
     
-    # Create optimizer and scheduler
+    # Setup optimizer and scheduler
+    from src.training.optimizer import create_optimizer
+    from src.training.scheduler import create_scheduler
     optimizer = create_optimizer(model, config)
     scheduler = create_scheduler(optimizer, config)
     
-    # Create loss function (weighted cross-entropy)
+    # Setup loss function
+    from src.training.loss import WeightedCSILoss
     criterion = WeightedCSILoss(unknown_weight=0.3)  # 30% weight for unknown class
     criterion = criterion.to(device)  # Move criterion to same device as model
     
@@ -376,28 +380,30 @@ def train_model(config: Config) -> None:
     save_checkpoint(model, optimizer, config.n_epochs, val_metrics["loss"], final_model_path, config=config)
     logger.info(f"Saved final model to {final_model_path}")
     
-    # Save training history
-    history_path = os.path.join(config.logs_dir, "training_history.json")
+    # Save training history to run directory
+    history_path = run_dir / "training_history" / "training_history.json"
     save_training_history(
         train_losses, val_losses,
         train_accuracies, val_accuracies,
         train_precisions, val_precisions,
         train_f1_scores, val_f1_scores,
-        history_path
+        str(history_path)
     )
     
-    # Plot training curves
-    plots_dir = os.path.join(config.logs_dir, "plots")
-    create_dirs(plots_dir)
+    # Plot training curves to run directory
+    training_curves_dir = run_dir / "graphs" / "training_curves"
     plot_training_curves(
         train_losses, val_losses,
         train_accuracies, val_accuracies,
         train_f1_scores, val_f1_scores,
-        plots_dir, "training_run",
+        str(training_curves_dir), "training_run",
         train_precisions, val_precisions
     )
     
     logger.info("Training completed successfully!")
+    logger.info(f"All outputs saved to run directory: {run_dir}")
+    
+    return run_dir
 
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 

@@ -76,8 +76,7 @@ def main():
         optimize_cli(args, mode="sweep-agent")
     elif args.mode in ["train", "both"]:
         train_cli(args)
-    
-    if args.mode in ["eval", "both"]:
+    elif args.mode == "eval":
         evaluate_cli(args)
 
 if __name__ == "__main__":

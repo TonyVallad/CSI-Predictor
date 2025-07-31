@@ -15,7 +15,8 @@ def save_confusion_matrix_graphs(
     confusion_matrices: Dict[str, np.ndarray],
     config,
     run_name: str,
-    split_name: str = "validation"
+    split_name: str = "validation",
+    save_dir: Optional[str] = None
 ) -> None:
     """
     Save confusion matrix graphs for each zone.
@@ -25,8 +26,17 @@ def save_confusion_matrix_graphs(
         config: Configuration object
         run_name: Name of the run
         split_name: Name of the data split
+        save_dir: Optional directory to save to. If None, uses config.output_dir
     """
-    save_dir = Path(config.output_dir) / "confusion_matrices" / split_name
+    if save_dir is not None:
+        save_dir = Path(save_dir)
+    else:
+        # Fallback to config.output_dir if it exists, otherwise use graph_dir
+        if hasattr(config, 'output_dir') and config.output_dir:
+            save_dir = Path(config.output_dir) / "confusion_matrices" / split_name
+        else:
+            save_dir = Path(config.graph_dir) / "confusion_matrices" / split_name
+    
     save_dir.mkdir(parents=True, exist_ok=True)
     
     zone_names = ["right_sup", "left_sup", "right_mid", "left_mid", "right_inf", "left_inf"]
