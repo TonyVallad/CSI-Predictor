@@ -529,7 +529,8 @@ def create_summary_dashboard(
     save_dir: str,
     run_name: str = "model",
     split_name: str = "validation",
-    ignore_class: int = 4
+    ignore_class: int = 4,
+    ahf_confusion_matrix: Optional[np.ndarray] = None
 ) -> None:
     """
     Create a comprehensive summary dashboard with training curves, confusion matrix, and ROC curves.
@@ -560,17 +561,19 @@ def create_summary_dashboard(
     save_path = Path(save_dir)
     save_path.mkdir(parents=True, exist_ok=True)
     
-    # Create figure with 3x2 subplots
-    fig = plt.figure(figsize=(20, 15))
-    fig.suptitle(f'Training Summary Dashboard - {run_name}_{split_name}', fontsize=16, fontweight='bold')
+    # Create figure with 3x3 subplots (adding AHF confusion matrix at bottom)
+    fig = plt.figure(figsize=(20, 20))
     
-    # Add timestamp
+    # Add timestamp first (positioned higher to avoid overlap)
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    fig.text(0.5, 0.98, f'Generated on {timestamp}', ha='center', va='top', fontsize=10, style='italic')
+    fig.text(0.5, 0.99, f'Generated on {timestamp}', ha='center', va='top', fontsize=10, style='italic')
     
-    # Create grid layout (2x3 instead of 3x3)
-    gs = fig.add_gridspec(2, 3, hspace=0.3, wspace=0.3)
+    # Add title (positioned lower to avoid overlap with timestamp)
+    fig.suptitle(f'Training Summary Dashboard - {run_name}_{split_name}', fontsize=16, fontweight='bold', y=0.95)
+    
+    # Create grid layout (3x3 to accommodate AHF confusion matrix)
+    gs = fig.add_gridspec(3, 3, hspace=0.4, wspace=0.3)
     
     epochs = list(range(1, len(train_losses) + 1))
     
@@ -689,6 +692,28 @@ def create_summary_dashboard(
     ax6.set_ylabel('True Positive Rate')
     ax6.legend(loc="lower right")
     ax6.grid(True, alpha=0.3)
+    
+    # 7. AHF Confusion Matrix (Bottom row, spanning all 3 columns)
+    if ahf_confusion_matrix is not None:
+        ax7 = fig.add_subplot(gs[2, :])
+        
+        # AHF class names (3 classes: Low, Medium, High risk)
+        ahf_class_names = ["Low Risk", "Medium Risk", "High Risk"]
+        
+        # Create heatmap
+        sns.heatmap(ahf_confusion_matrix, annot=True, fmt='d', cmap='Blues',
+                   xticklabels=ahf_class_names, yticklabels=ahf_class_names, ax=ax7)
+        
+        # Calculate AHF accuracy
+        ahf_accuracy = np.sum(np.diag(ahf_confusion_matrix)) / np.sum(ahf_confusion_matrix)
+        ax7.set_title(f'AHF Confusion Matrix\nAccuracy: {ahf_accuracy:.3f}')
+        ax7.set_xlabel('Predicted AHF Class')
+        ax7.set_ylabel('Actual AHF Class')
+    else:
+        # If no AHF confusion matrix provided, show placeholder
+        ax7 = fig.add_subplot(gs[2, :])
+        ax7.text(0.5, 0.5, 'AHF Confusion Matrix not available', ha='center', va='center', transform=ax7.transAxes)
+        ax7.set_title('AHF Confusion Matrix')
     
     plt.tight_layout()
     

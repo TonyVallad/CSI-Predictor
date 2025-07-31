@@ -470,7 +470,8 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
             zone_names, class_names,
             val_overall_conf_matrix,
             str(run_dir) if run_dir else str(graphs_dir),
-            config.model_arch, "validation"
+            config.model_arch, "validation",
+            ahf_confusion_matrix=val_ahf_conf_matrix
         )
         logger.info("Created validation summary dashboard")
     except Exception as e:
@@ -487,7 +488,8 @@ def evaluate_model(config, run_dir: Optional[Path] = None) -> None:
             zone_names, class_names,
             test_overall_conf_matrix,
             str(run_dir) if run_dir else str(graphs_dir),
-            config.model_arch, "test"
+            config.model_arch, "test",
+            ahf_confusion_matrix=test_ahf_conf_matrix
         )
         logger.info("Created test summary dashboard")
     except Exception as e:
