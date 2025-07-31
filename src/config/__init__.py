@@ -137,6 +137,60 @@ def copy_config_on_training_start(run_dir: Optional[Path] = None) -> None:
         timestamped_path = Path(config.ini_dir) / timestamped_filename
         logger.info(f"Copying configuration to config directory: {timestamped_path}")
     
+    # Find the original config.ini file that was used
+    original_config_path = None
+    
+    # Try to find the config.ini file that was actually used
+    possible_paths = [
+        "config/config.ini",
+        "../config/config.ini", 
+        "../../config/config.ini",
+        "src/../config/config.ini",
+    ]
+    
+    # Also check if we can determine the path from the config loader
+    try:
+        from .config_loader import ConfigLoader
+        temp_loader = ConfigLoader(".env", "dummy.ini")
+        env_vars = temp_loader.load_env_vars()
+        ini_dir = env_vars.get("INI_DIR", "")
+        if ini_dir:
+            possible_paths.insert(0, os.path.join(ini_dir, "config.ini"))
+        else:
+            data_dir = env_vars.get("DATA_DIR", "./data")
+            possible_paths.insert(0, os.path.join(data_dir, "config", "config.ini"))
+    except Exception:
+        pass
+    
+    # Find the first existing config.ini file
+    for path in possible_paths:
+        if os.path.exists(path):
+            original_config_path = path
+            break
+    
+    if original_config_path and os.path.exists(original_config_path):
+        # Do an exact copy of the original config.ini file
+        try:
+            shutil.copy2(original_config_path, timestamped_path)
+            logger.info(f"Exact copy of config.ini saved to: {timestamped_path}")
+        except Exception as e:
+            logger.warning(f"Failed to copy config.ini file: {e}")
+            # Fallback to creating config from Config object
+            _create_config_from_object(config, timestamped_path)
+    else:
+        logger.warning("Original config.ini file not found, creating config from loaded parameters")
+        # Fallback to creating config from Config object
+        _create_config_from_object(config, timestamped_path)
+
+
+def _create_config_from_object(config: Config, timestamped_path: Path) -> None:
+    """
+    Create config.ini file from Config object (fallback method).
+    
+    Args:
+        config: Configuration object
+        timestamped_path: Path to save the config file
+    """
     # Create a new config parser
     new_config = configparser.ConfigParser()
     
@@ -183,7 +237,7 @@ def copy_config_on_training_start(run_dir: Optional[Path] = None) -> None:
     with open(timestamped_path, 'w') as configfile:
         new_config.write(configfile)
     
-    logger.info(f"Configuration saved to: {timestamped_path}")
+    logger.info(f"Config created from loaded parameters: {timestamped_path}")
 
 def create_default_env_file(env_path: str = ".env") -> None:
     """
