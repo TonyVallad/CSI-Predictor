@@ -8,13 +8,11 @@ This package contains all CLI-related functionality including:
 - Optimization CLI
 """
 
-from .main import main
 from .train import train_cli, create_train_parser
 from .evaluate import evaluate_cli, create_evaluate_parser
 from .optimize import optimize_cli, create_optimize_parser
 
 __all__ = [
-    'main',
     'train_cli',
     'create_train_parser',
     'evaluate_cli',
