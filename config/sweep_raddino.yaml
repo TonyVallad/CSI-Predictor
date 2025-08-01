@@ -1,0 +1,82 @@
+# W&B Sweep Configuration for CSI-Predictor - RadDINO
+# This file defines the hyperparameter search space for RadDINO model optimization
+
+program: main.py
+method: bayes
+metric:
+  name: val_f1_weighted
+  goal: maximize
+
+parameters:
+  # Fixed model parameters
+  model_arch:
+    value: 'raddino'
+  
+  # Fixed preprocessing parameters - RadDINO requires official processor
+  use_official_processor:
+    value: true
+  
+  # Fixed batch size for RadDINO (smaller due to memory requirements)
+  batch_size:
+    value: 8
+  
+  # Optimizer settings
+  optimizer:
+    values: ['adam', 'adamw', 'sgd']
+  
+  # Learning rate - Vision transformers often need lower learning rates
+  learning_rate:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.001
+  
+  # Weight decay
+  weight_decay:
+    distribution: log_uniform_values
+    min: 0.000001
+    max: 0.001
+  
+  # Dropout rate
+  dropout_rate:
+    distribution: uniform
+    min: 0.1
+    max: 0.7
+  
+  # Momentum (for SGD)
+  momentum:
+    distribution: uniform
+    min: 0.8
+    max: 0.99
+  
+  # Normalization strategy
+  normalization_strategy:
+    values: ['imagenet', 'medical']
+  
+  # Scheduler type
+  scheduler_type:
+    values: ['ReduceLROnPlateau', 'CosineAnnealingLR']
+  
+  # Loss function weights for class imbalance
+  unknown_weight:
+    distribution: uniform
+    min: 0.1
+    max: 1.0
+  
+  # Early stopping patience
+  patience:
+    value: 15
+
+# Early termination for poor performing runs
+early_terminate:
+  type: hyperband
+  min_iter: 5
+  eta: 3
+
+# Command to run for each sweep trial
+command:
+  - python
+  - main.py
+  - --mode
+  - train
+  - --config
+  - config.ini 
