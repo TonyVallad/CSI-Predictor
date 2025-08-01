@@ -222,7 +222,8 @@ def visualize_data_distribution(
         axes[i].grid(True, alpha=0.3)
     
     plt.suptitle('CSI Score Distribution Across Train/Val/Test Sets', fontsize=16)
-    plt.tight_layout()
+    # Adjust layout manually to prevent overlap with suptitle
+    plt.subplots_adjust(top=0.92, bottom=0.08, left=0.08, right=0.95, hspace=0.3, wspace=0.3)
     
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')

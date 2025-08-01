@@ -110,7 +110,8 @@ def create_confusion_matrix_grid(
         axes[row, col].set_xlabel('Predicted')
         axes[row, col].set_ylabel('Actual')
     
-    plt.tight_layout()
+    # Adjust layout manually to prevent overlap with suptitle
+    plt.subplots_adjust(top=0.92, bottom=0.08, left=0.08, right=0.95, hspace=0.3, wspace=0.3)
     
     # Save plot
     plot_path = save_path / f"confusion_matrix_grid_{split_name}_{run_name}.png"

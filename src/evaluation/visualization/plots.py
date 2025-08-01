@@ -502,7 +502,8 @@ def plot_training_curves(
                        ha='center', va='center', transform=axes[1, 1].transAxes)
         axes[1, 1].set_title('Precision')
     
-    plt.tight_layout()
+    # Adjust layout manually to prevent overlap with suptitle
+    plt.subplots_adjust(top=0.92, bottom=0.08, left=0.08, right=0.95, hspace=0.3, wspace=0.3)
     
     # Save plot
     plot_path = save_path / f"training_curves_{run_name}.png"
@@ -731,7 +732,8 @@ def create_summary_dashboard(
     ax9.text(0.5, 0.5, 'Reserved for future use', ha='center', va='center', transform=ax9.transAxes, style='italic')
     ax9.set_title('Future Graph')
     
-    plt.tight_layout()
+    # Adjust layout manually to prevent overlap with text elements
+    plt.subplots_adjust(top=0.92, bottom=0.08, left=0.08, right=0.95, hspace=0.4, wspace=0.3)
     
     # Save dashboard
     dashboard_path = save_path / f"{run_name}_{split_name}_summary_dashboard.png"
