@@ -57,13 +57,37 @@ def get_cached_data_loaders(config: Config) -> Tuple[DataLoader, DataLoader, Dat
     
     return _GLOBAL_DATA_CACHE[cache_key]
 
-def get_sweep_config() -> Dict[str, Any]:
+def get_sweep_config(model_arch: str = 'resnet50') -> Dict[str, Any]:
     """
-    Get W&B sweep configuration.
+    Get W&B sweep configuration for a specific model architecture.
     
+    Args:
+        model_arch: Model architecture ('resnet50', 'chexnet', 'raddino')
+        
     Returns:
         Dictionary with sweep configuration
     """
+    # Model-specific configurations
+    model_configs = {
+        'resnet50': {
+            'batch_size': 128,
+            'learning_rate': {'min': 0.0001, 'max': 0.01},
+            'use_official_processor': False
+        },
+        'chexnet': {
+            'batch_size': 64,
+            'learning_rate': {'min': 0.00005, 'max': 0.005},
+            'use_official_processor': False
+        },
+        'raddino': {
+            'batch_size': 8,
+            'learning_rate': {'min': 0.00001, 'max': 0.001},
+            'use_official_processor': True
+        }
+    }
+    
+    config = model_configs.get(model_arch, model_configs['resnet50'])
+    
     return {
         'method': 'bayes',  # Bayesian optimization
         'metric': {
@@ -71,40 +95,60 @@ def get_sweep_config() -> Dict[str, Any]:
             'goal': 'maximize'
         },
         'parameters': {
-            'learning_rate': {
-                'min': 1e-5,
-                'max': 1e-2,
-                'distribution': 'log_uniform'
+            # Fixed model parameters
+            'model_arch': {
+                'value': model_arch
+            },
+            'use_official_processor': {
+                'value': config['use_official_processor']
             },
             'batch_size': {
-                'values': [8, 16, 32, 64]
+                'value': config['batch_size']
             },
+            
+            # Sweep parameters
             'optimizer': {
                 'values': ['adam', 'adamw', 'sgd']
             },
+            'learning_rate': {
+                'distribution': 'log_uniform_values',
+                'min': config['learning_rate']['min'],
+                'max': config['learning_rate']['max']
+            },
             'weight_decay': {
-                'min': 1e-5,
-                'max': 1e-2,
-                'distribution': 'log_uniform'
+                'distribution': 'log_uniform_values',
+                'min': 0.000001,
+                'max': 0.001
             },
             'dropout_rate': {
+                'distribution': 'uniform',
                 'min': 0.1,
                 'max': 0.7
             },
-            'model_arch': {
-                'values': ['resnet50', 'densenet121', 'custom_cnn']
+            'momentum': {
+                'distribution': 'uniform',
+                'min': 0.8,
+                'max': 0.99
             },
-            'zone_focus_method': {
-                'values': ['masking', 'spatial_reduction']
+            'normalization_strategy': {
+                'values': ['imagenet', 'medical']
             },
-            'attention_strength': {
-                'min': 0.3,
-                'max': 0.9
+            'scheduler_type': {
+                'values': ['ReduceLROnPlateau', 'CosineAnnealingLR']
+            },
+            'unknown_weight': {
+                'distribution': 'uniform',
+                'min': 0.1,
+                'max': 1.0
+            },
+            'patience': {
+                'value': 15
             }
         },
         'early_terminate': {
             'type': 'hyperband',
-            'min_iter': 10
+            'min_iter': 5,
+            'eta': 3
         }
     }
 
@@ -211,15 +255,15 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
         val_metrics = validate_epoch(model, val_loader, criterion, device)
         
         # Update scheduler
-        scheduler.step(val_metrics['val_f1_weighted'])
+        scheduler.step(val_metrics['f1_weighted_overall'])
         
         # Log to W&B
         wandb.log({
             'epoch': epoch,
-            'train_loss': train_metrics['train_loss'],
-            'train_f1_weighted': train_metrics['train_f1_weighted'],
-            'val_loss': val_metrics['val_loss'],
-            'val_f1_weighted': val_metrics['val_f1_weighted'],
+            'train_loss': train_metrics['loss'],
+            'train_f1_weighted': train_metrics['f1_weighted_overall'],
+            'val_loss': val_metrics['loss'],
+            'val_f1_weighted': val_metrics['f1_weighted_overall'],
             'learning_rate': optimizer.param_groups[0]['lr']
         })
         
@@ -264,14 +308,16 @@ def run_sweep_agent(sweep_id: str, config: Config) -> None:
 
 def create_and_run_sweep(
     project_name: str = "csi-sweep",
+    model_arch: str = "resnet50",
     n_runs: int = 100,
     config: Optional[Config] = None
 ) -> str:
     """
-    Create and run W&B sweep.
+    Create and run W&B sweep for a specific model architecture.
     
     Args:
         project_name: W&B project name
+        model_arch: Model architecture ('resnet50', 'chexnet', 'raddino')
         n_runs: Number of runs in the sweep
         config: Configuration object (uses default if None)
         
@@ -281,15 +327,41 @@ def create_and_run_sweep(
     if config is None:
         config = get_config()
     
-    # Get sweep configuration
-    sweep_config = get_sweep_config()
-    sweep_config['name'] = f"csi_optimization_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    # Get sweep configuration for the specific model
+    sweep_config = get_sweep_config(model_arch)
+    sweep_config['name'] = f"CSI-Predictor {model_arch.upper()} Hyperparameter Optimization"
     
     # Initialize sweep
     sweep_id = initialize_sweep(project_name, sweep_config)
     
     # Run sweep agent
     run_sweep_agent(sweep_id, config)
+    
+    return sweep_id
+
+def initialize_model_sweep(
+    project_name: str = "csi-predictor",
+    model_arch: str = "resnet50"
+) -> str:
+    """
+    Initialize a W&B sweep for a specific model architecture.
+    
+    Args:
+        project_name: W&B project name
+        model_arch: Model architecture ('resnet50', 'chexnet', 'raddino')
+        
+    Returns:
+        Sweep ID
+    """
+    # Get sweep configuration for the specific model
+    sweep_config = get_sweep_config(model_arch)
+    sweep_config['name'] = f"CSI-Predictor {model_arch.upper()} Hyperparameter Optimization"
+    
+    # Initialize sweep
+    sweep_id = initialize_sweep(project_name, sweep_config)
+    
+    logger.info(f"Initialized sweep for {model_arch}: {sweep_id}")
+    logger.info(f"Sweep URL: https://wandb.ai/{project_name}/sweeps/{sweep_id}")
     
     return sweep_id
 
