@@ -104,7 +104,6 @@ def get_config(env_path: str = ".env", ini_path: str = None, force_reload: bool 
         setup_logging(_config_instance.logs_dir)
         
         # Set WANDB_DIR environment variable for global W&B configuration
-        import os
         os.environ['WANDB_DIR'] = _config_instance.wandb_dir
         
         logger.info("Configuration loaded successfully")

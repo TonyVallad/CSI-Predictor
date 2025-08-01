@@ -10,8 +10,12 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.optimization.wandb_sweep import initialize_model_sweep
-from src.config import get_config
+# Import directly from modules to avoid package __init__.py issues
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from optimization.wandb_sweep import initialize_model_sweep
+from config import get_config
 
 def main():
     """Initialize sweep for CheXNet only."""
