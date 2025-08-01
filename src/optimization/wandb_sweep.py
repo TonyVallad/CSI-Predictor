@@ -214,20 +214,26 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
         weight_decay=wandb_config['weight_decay'],
         dropout_rate=wandb_config['dropout_rate'],
         model_arch=wandb_config['model_arch'],
-        zone_focus_method=wandb_config['zone_focus_method'],
-        attention_strength=wandb_config['attention_strength'],
+        normalization_strategy=wandb_config['normalization_strategy'],
+        patience=wandb_config['patience'],
     )
     
     # Get cached data loaders
     train_loader, val_loader, _ = get_cached_data_loaders(config)
+    
+    # Load CSV data for metrics computation
+    import pandas as pd
+    csv_path = Path(config.csv_dir) / config.labels_csv
+    csv_data = pd.read_csv(csv_path, sep=config.labels_csv_separator) if csv_path.exists() else None
     
     # Build model
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
     model = build_model(config)
     model.to(device)
     
-    # Create loss function
-    criterion = WeightedCSILoss()
+    # Create loss function with unknown weight from sweep
+    unknown_weight = wandb_config.get('unknown_weight', 0.5)
+    criterion = WeightedCSILoss(unknown_weight=unknown_weight)
     
     # Create optimizer
     if config.optimizer.lower() == 'adam':
@@ -239,8 +245,14 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
     else:
         raise ValueError(f"Unknown optimizer: {config.optimizer}")
     
-    # Create scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
+    # Create scheduler based on sweep configuration
+    scheduler_type = wandb_config.get('scheduler_type', 'ReduceLROnPlateau')
+    if scheduler_type == 'ReduceLROnPlateau':
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
+    elif scheduler_type == 'CosineAnnealingLR':
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.n_epochs)
+    else:
+        raise ValueError(f"Unknown scheduler type: {scheduler_type}")
     
     # Create callbacks
     early_stopping = EarlyStopping(patience=config.patience, min_delta=0.001)
@@ -249,13 +261,16 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
     # Training loop
     for epoch in range(config.n_epochs):
         # Training
-        train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, epoch)
+        train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, epoch, csv_data, config)
         
         # Validation
-        val_metrics = validate_epoch(model, val_loader, criterion, device)
+        val_metrics = validate_epoch(model, val_loader, criterion, device, csv_data, config)
         
-        # Update scheduler
-        scheduler.step(val_metrics['f1_weighted_overall'])
+        # Update scheduler based on type
+        if scheduler_type == 'ReduceLROnPlateau':
+            scheduler.step(val_metrics['f1_weighted_overall'])
+        elif scheduler_type == 'CosineAnnealingLR':
+            scheduler.step()
         
         # Log to W&B
         wandb.log({
@@ -267,8 +282,11 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
             'learning_rate': optimizer.param_groups[0]['lr']
         })
         
-        # Early stopping
-        if early_stopping(val_metrics['val_loss'], model):
+        # Debug logging
+        logger.info(f"Epoch {epoch}: val_f1_weighted = {val_metrics['f1_weighted_overall']}")
+        
+        # Early stopping based on validation F1 score
+        if early_stopping(val_metrics['f1_weighted_overall'], model):
             logger.info(f"Early stopping triggered at epoch {epoch}")
             break
 
