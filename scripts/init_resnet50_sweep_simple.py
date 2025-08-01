@@ -90,8 +90,8 @@ def main():
         sweep_id = wandb.sweep(sweep_config, project="csi-predictor")
         
         print(f"✅ ResNet50 sweep created: {sweep_id}")
-        print(f"🔗 URL: https://wandb.ai/csi-predictor/sweeps/{sweep_id}")
-        print(f"🤖 Run agent with: wandb agent csi-predictor/csi-predictor/{sweep_id}")
+        print(f"🔗 URL: https://wandb.ai/tony-vallad-chru-de-nancy/csi-predictor/sweeps/{sweep_id}")
+        print(f"🤖 Run agent with: wandb agent tony-vallad-chru-de-nancy/csi-predictor/{sweep_id}")
         
     except Exception as e:
         print(f"❌ Failed to create ResNet50 sweep: {e}")
