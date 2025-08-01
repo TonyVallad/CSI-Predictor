@@ -202,7 +202,6 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
         masks_path=config.masks_path,
         image_format=config.image_format,
         image_extension=config.image_extension,
-        normalization_strategy=config.normalization_strategy,
         custom_mean=config.custom_mean,
         custom_std=config.custom_std,
         
