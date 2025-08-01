@@ -18,58 +18,58 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.data.transforms import get_raddino_processor, get_default_transforms
-from src.config import Config
+from src.config import Config, ANSI
 
 
 def test_processor_availability():
     """Test processor availability."""
-    print("Testing RadDINO processor availability...")
+    print(f"{ANSI['B']}Testing RadDINO processor availability...{ANSI['W']}")
     
     try:
         processor = get_raddino_processor()
-        print("✅ RadDINO processor created successfully")
+        print(f"{ANSI['G']}✅ RadDINO processor created successfully{ANSI['W']}")
         return processor
     except Exception as e:
-        print(f"❌ Failed to create RadDINO processor: {e}")
+        print(f"{ANSI['R']}❌ Failed to create RadDINO processor:{ANSI['W']} {e}")
         return None
 
 
 def test_transforms():
     """Test image transformations."""
-    print("\nTesting image transformations...")
+    print(f"\n{ANSI['B']}Testing image transformations...{ANSI['W']}")
     
     # Test default transforms
     try:
         transforms = get_default_transforms()
-        print("✅ Default transforms created successfully")
+        print(f"{ANSI['G']}✅ Default transforms created successfully{ANSI['W']}")
         
         # Create dummy image
         dummy_image = torch.randn(3, 224, 224)
         transformed = transforms(dummy_image)
-        print(f"✅ Transform applied successfully, output shape: {transformed.shape}")
+        print(f"{ANSI['G']}✅ Transform applied successfully, output shape:{ANSI['W']} {transformed.shape}")
         
     except Exception as e:
-        print(f"❌ Failed to test transforms: {e}")
+        print(f"{ANSI['R']}❌ Failed to test transforms:{ANSI['W']} {e}")
 
 
 def test_config():
     """Test configuration settings."""
-    print("\nTesting configuration...")
+    print(f"\n{ANSI['B']}Testing configuration...{ANSI['W']}")
     
     try:
         config = Config()
-        print("✅ Configuration created successfully")
-        print(f"📊 Model architecture: {config.model_arch}")
-        print(f"📊 Use official processor: {config.use_official_processor}")
+        print(f"{ANSI['G']}✅ Configuration created successfully{ANSI['W']}")
+        print(f"{ANSI['B']}📊 Model architecture:{ANSI['W']} {config.model_arch}")
+        print(f"{ANSI['B']}📊 Use official processor:{ANSI['W']} {config.use_official_processor}")
         
     except Exception as e:
-        print(f"❌ Failed to test configuration: {e}")
+        print(f"{ANSI['R']}❌ Failed to test configuration:{ANSI['W']} {e}")
 
 
 def main():
     """Run all tests."""
-    print("🧪 RadDINO Test Suite")
-    print("=" * 50)
+    print(f"{ANSI['B']}🧪 RadDINO Test Suite{ANSI['W']}")
+    print(f"{ANSI['B']}{'=' * 50}{ANSI['W']}")
     
     # Test processor availability
     processor = test_processor_availability()
@@ -80,7 +80,7 @@ def main():
     # Test configuration
     test_config()
     
-    print("\n✅ All tests completed!")
+    print(f"\n{ANSI['G']}✅ All tests completed!{ANSI['W']}")
 
 
 if __name__ == "__main__":

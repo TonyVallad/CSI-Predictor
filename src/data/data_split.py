@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, List, Optional
 from collections import Counter
+from ..config import ANSI
 
 
 def create_stratification_groups(df: pd.DataFrame, strat_columns: List[str]) -> pd.Series:
@@ -116,7 +117,7 @@ def pytorch_train_test_split(
         min_group_size = min(group_counts.values())
         
         if min_group_size < 2:
-            print(f"Warning: Smallest group has only {min_group_size} sample(s). Using random split.")
+            print(f"{ANSI['Y']}Warning: Smallest group has only {min_group_size} sample(s). Using random split.{ANSI['W']}")
             stratify_by = None
     
     if stratify_by is not None:
@@ -165,14 +166,14 @@ def pytorch_train_val_test_split(
     if abs(train_size + val_size + test_size - 1.0) > 1e-6:
         raise ValueError("Train, val, and test sizes must sum to 1.0")
     
-    print(f"Splitting data: train={train_size:.1%}, val={val_size:.1%}, test={test_size:.1%}")
+    print(f"{ANSI['B']}Splitting data:{ANSI['W']} train={train_size:.1%}, val={val_size:.1%}, test={test_size:.1%}")
     
     # Create stratification groups if specified
     stratify_by = None
     if stratify_columns:
         stratify_by = create_stratification_groups(df, stratify_columns)
         n_groups = len(stratify_by.unique())
-        print(f"Created {n_groups} unique stratification groups")
+        print(f"{ANSI['B']}Created{ANSI['W']} {n_groups} unique stratification groups")
     
     # First split: train vs (val + test)
     temp_size = val_size + test_size
@@ -200,7 +201,7 @@ def pytorch_train_val_test_split(
         random_state=random_state + 1  # Different seed for second split
     )
     
-    print(f"Split completed: train={len(train_df)}, val={len(val_df)}, test={len(test_df)}")
+    print(f"{ANSI['G']}Split completed:{ANSI['W']} train={len(train_df)}, val={len(val_df)}, test={len(test_df)}")
     
     return train_df, val_df, test_df
 

@@ -22,7 +22,7 @@ except ImportError:
     NIBABEL_AVAILABLE = False
     nib = None
 
-from ..config import Config, cfg
+from ..config import Config, cfg, ANSI
 from .transforms import get_default_transforms, get_raddino_processor
 
 # CSI zone column names (6 zones)
@@ -74,7 +74,7 @@ class CSIDataset(Dataset):
             self.use_official_processor):
             self.raddino_processor = get_raddino_processor(use_official=True)
             if self.raddino_processor is None:
-                print("Warning: Failed to load RadDINO processor, falling back to standard transforms")
+                print(f"{ANSI['Y']}Warning: Failed to load RadDINO processor, falling back to standard transforms{ANSI['W']}")
                 self.use_official_processor = False
         
         # Set default transform if none provided
@@ -92,11 +92,11 @@ class CSIDataset(Dataset):
         if self.load_to_memory:
             self._cache_images()
         
-        print(f"Initialized {phase} dataset with {len(self.dataframe)} samples")
+        print(f"{ANSI['B']}Initialized{ANSI['W']} {phase} dataset with {len(self.dataframe)} samples")
         if self.use_official_processor and self.raddino_processor:
-            print(f"Using official RadDINO AutoImageProcessor")
+            print(f"{ANSI['B']}Using official RadDINO AutoImageProcessor{ANSI['W']}")
         if self.load_to_memory:
-            print(f"Pre-cached {len(self.cached_images)} images in memory")
+            print(f"{ANSI['B']}Pre-cached{ANSI['W']} {len(self.cached_images)} images in memory")
     
     def _load_nifti_image(self, image_path: Path) -> Optional[np.ndarray]:
         """
@@ -138,12 +138,12 @@ class CSIDataset(Dataset):
             return img_data
             
         except Exception as e:
-            print(f"Error loading NIFTI file {image_path}: {e}")
+            print(f"{ANSI['R']}Error loading NIFTI file {image_path}:{ANSI['W']} {e}")
             return None
     
     def _cache_images(self) -> None:
         """Pre-cache all images in memory."""
-        print(f"Pre-caching {len(self.dataframe)} images in memory...")
+        print(f"{ANSI['B']}Pre-caching{ANSI['W']} {len(self.dataframe)} images in memory...")
         
         failed_files = []
         
@@ -156,7 +156,7 @@ class CSIDataset(Dataset):
             try:
                 # Check if file exists first
                 if not image_path.exists():
-                    print(f"Warning: NIFTI file not found: {image_path}")
+                    print(f"{ANSI['Y']}Warning: NIFTI file not found:{ANSI['W']} {image_path}")
                     failed_files.append(f"{file_id} (file not found)")
                     self.cached_images[idx] = None
                     continue
@@ -168,28 +168,28 @@ class CSIDataset(Dataset):
                     self.cached_images[idx] = image_array
                 else:
                     # Store None for failed images
-                    print(f"Warning: Failed to load NIFTI data from {image_path}")
+                    print(f"{ANSI['Y']}Warning: Failed to load NIFTI data from{ANSI['W']} {image_path}")
                     failed_files.append(f"{file_id} (load failed)")
                     self.cached_images[idx] = None
             except Exception as e:
-                print(f"Warning: Failed to cache image {image_path}: {e}")
+                print(f"{ANSI['Y']}Warning: Failed to cache image {image_path}:{ANSI['W']} {e}")
                 failed_files.append(f"{file_id} (exception: {e})")
                 # Store None for failed images
                 self.cached_images[idx] = None
         
         # Report summary
         successful_count = len(self.dataframe) - len(failed_files)
-        print(f"Caching complete: {successful_count}/{len(self.dataframe)} images loaded successfully")
+        print(f"{ANSI['G']}Caching complete:{ANSI['W']} {successful_count}/{len(self.dataframe)} images loaded successfully")
         
         if failed_files:
-            print(f"Failed to load {len(failed_files)} images:")
+            print(f"{ANSI['Y']}Failed to load {len(failed_files)} images:{ANSI['W']}")
             for failed_file in failed_files[:10]:  # Show first 10 failures
                 print(f"  - {failed_file}")
             if len(failed_files) > 10:
                 print(f"  ... and {len(failed_files) - 10} more")
             
             # Suggest solutions
-            print("\nPossible solutions:")
+            print(f"\n{ANSI['B']}Possible solutions:{ANSI['W']}")
             print("1. Check that all FileIDs in your CSV have corresponding .nii.gz files")
             print("2. Verify the data path is correct:", self.data_path)
             print("3. Ensure NIFTI files were created successfully during conversion")

@@ -9,6 +9,7 @@ from loguru import logger
 
 from src.optimization.hyperopt import optimize_hyperparameters
 from src.optimization.wandb_sweep import initialize_sweep, run_sweep_agent
+from src.config import ANSI
 
 def optimize_cli(args, mode="hyperopt"):
     """
@@ -42,9 +43,9 @@ def optimize_cli(args, mode="hyperopt"):
         logger.info("Hyperparameter optimization completed.")
         
         # Print recommended next steps
-        print(f"\n{'='*80}")
-        print("🎯 NEXT STEPS:")
-        print("="*80)
+        print(f"\n{ANSI['B']}{'='*80}{ANSI['W']}")
+        print(f"{ANSI['G']}🎯 NEXT STEPS:{ANSI['W']}")
+        print(f"{ANSI['B']}{'='*80}{ANSI['W']}")
         print("1. Review the optimization results above")
         print("2. Train the final model with optimized hyperparameters:")
         print(f"   python main.py --mode train-optimized --hyperparams models/hyperopt/{args.study_name}_best_params.json")
@@ -61,11 +62,11 @@ def optimize_cli(args, mode="hyperopt"):
             entity=args.entity
         )
         
-        print(f"\n{'='*80}")
-        print("🚀 W&B SWEEP INITIALIZED")
-        print(f"{'='*80}")
-        print(f"Sweep ID: {sweep_id}")
-        print("Next steps:")
+        print(f"\n{ANSI['B']}{'='*80}{ANSI['W']}")
+        print(f"{ANSI['G']}🚀 W&B SWEEP INITIALIZED{ANSI['W']}")
+        print(f"{ANSI['B']}{'='*80}{ANSI['W']}")
+        print(f"{ANSI['B']}Sweep ID:{ANSI['W']} {sweep_id}")
+        print(f"{ANSI['B']}Next steps:{ANSI['W']}")
         print("1. Visit your W&B dashboard to monitor the sweep")
         print("2. Run an agent with:")
         print(f"   python main.py --mode sweep-agent --sweep-id {sweep_id}")

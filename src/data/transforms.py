@@ -7,7 +7,7 @@ This module contains image transformation functionality extracted from the origi
 import torch
 from torchvision import transforms
 from typing import Optional
-from ..config import Config, cfg
+from ..config import Config, cfg, ANSI
 from .preprocessing import get_normalization_parameters
 
 # Model architecture to input size mapping
@@ -56,7 +56,7 @@ def get_raddino_processor(use_official: bool = False):
             processor = AutoImageProcessor.from_pretrained(repo, use_fast=True)
             return processor
         except Exception as e:
-            print(f"Warning: Failed to load RadDINO processor: {e}")
+            print(f"{ANSI['Y']}Warning: Failed to load RadDINO processor:{ANSI['W']} {e}")
             return None
     return None
 

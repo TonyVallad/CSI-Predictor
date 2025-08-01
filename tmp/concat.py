@@ -2,6 +2,7 @@ import os
 import re
 from PIL import Image
 from typing import List, Tuple
+from src.config import ANSI
 
 EXPORT_DIR = '/home/pyuser/data/Paradise_Exports'
 
@@ -21,11 +22,11 @@ def concat_images(num_images_per_batch: int, output_dir: str = None) -> None:
     image_files = get_pipeline_images()
     
     if not image_files:
-        print(f"No pipeline_batch images found in {EXPORT_DIR}")
+        print(f"{ANSI['Y']}No pipeline_batch images found in{ANSI['W']} {EXPORT_DIR}")
         return
     
-    print(f"Found {len(image_files)} images to process")
-    print(f"Creating batches of {num_images_per_batch} images each")
+    print(f"{ANSI['B']}Found{ANSI['W']} {len(image_files)} images to process")
+    print(f"{ANSI['B']}Creating batches of{ANSI['W']} {num_images_per_batch} images each")
     
     # Process images in batches
     batch_num = 1
@@ -34,7 +35,7 @@ def concat_images(num_images_per_batch: int, output_dir: str = None) -> None:
         
         # Process incomplete batches at the end
         if len(batch_files) < num_images_per_batch:
-            print(f"Processing incomplete batch with {len(batch_files)} images")
+            print(f"{ANSI['Y']}Processing incomplete batch with{ANSI['W']} {len(batch_files)} images")
         
         try:
             concatenated_image = concatenate_images_horizontally(batch_files)
@@ -44,11 +45,11 @@ def concat_images(num_images_per_batch: int, output_dir: str = None) -> None:
             output_path = os.path.join(output_dir, output_filename)
             concatenated_image.save(output_path)
             
-            print(f"Created {output_filename} from images {i+1} to {i+len(batch_files)}")
+            print(f"{ANSI['G']}Created{ANSI['W']} {output_filename} from images {i+1} to {i+len(batch_files)}")
             batch_num += 1
             
         except Exception as e:
-            print(f"Error processing batch {batch_num}: {str(e)}")
+            print(f"{ANSI['R']}Error processing batch {batch_num}:{ANSI['W']} {str(e)}")
             continue
 
 def get_pipeline_images() -> List[str]:
@@ -59,7 +60,7 @@ def get_pipeline_images() -> List[str]:
         List[str]: List of full paths to pipeline_batch images, sorted numerically
     """
     if not os.path.exists(EXPORT_DIR):
-        print(f"Export directory does not exist: {EXPORT_DIR}")
+        print(f"{ANSI['R']}Export directory does not exist:{ANSI['W']} {EXPORT_DIR}")
         return []
     
     # Pattern to match pipeline_batch_XXX.png files

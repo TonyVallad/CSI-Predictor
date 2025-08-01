@@ -7,6 +7,7 @@ This module contains data splitting functionality extracted from the original sr
 import pandas as pd
 from typing import Tuple
 from .data_split import pytorch_train_val_test_split, pytorch_train_test_split
+from ..config import ANSI
 
 # CSI zone column names (6 zones)
 CSI_COLUMNS = ['right_sup', 'left_sup', 'right_mid', 'left_mid', 'right_inf', 'left_inf']
@@ -64,7 +65,7 @@ def split_data_stratified(
     if abs(train_size + val_size + test_size - 1.0) > 1e-6:
         raise ValueError("Train, val, and test sizes must sum to 1.0")
     
-    print(f"Splitting data: train={train_size:.1%}, val={val_size:.1%}, test={test_size:.1%}")
+    print(f"{ANSI['B']}Splitting data:{ANSI['W']} train={train_size:.1%}, val={val_size:.1%}, test={test_size:.1%}")
     
     # Use PyTorch implementation with CSI columns for stratification
     try:
@@ -80,7 +81,7 @@ def split_data_stratified(
         return train_df, val_df, test_df
         
     except Exception as e:
-        print(f"Warning: Stratified split failed ({e}), using random split")
+        print(f"{ANSI['Y']}Warning: Stratified split failed ({e}), using random split{ANSI['W']}")
         
         # Fallback to random split using our PyTorch implementation
         # First split: train vs (val + test)
@@ -100,7 +101,7 @@ def split_data_stratified(
             random_state=random_state + 1
         )
         
-        print(f"Split completed: train={len(train_df)}, val={len(val_df)}, test={len(test_df)}")
+        print(f"{ANSI['G']}Split completed:{ANSI['W']} train={len(train_df)}, val={len(val_df)}, test={len(test_df)}")
         return train_df, val_df, test_df
 
 __version__ = "1.0.0"

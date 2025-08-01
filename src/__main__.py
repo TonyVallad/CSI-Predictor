@@ -5,6 +5,7 @@ Supports python -m src.train and python -m src.evaluate commands.
 
 import sys
 from pathlib import Path
+from .config import ANSI
 
 # Add src to path for imports
 src_path = Path(__file__).parent
@@ -12,11 +13,11 @@ sys.path.insert(0, str(src_path))
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python -m src <command> [args]")
-        print("Commands:")
-        print("  train    - Train CSI-Predictor model")
-        print("  evaluate - Evaluate CSI-Predictor model")
-        print("  optimize - Run hyperparameter optimization")
+        print(f"{ANSI['B']}Usage:{ANSI['W']} python -m src <command> [args]")
+        print(f"{ANSI['B']}Commands:{ANSI['W']}")
+        print(f"  {ANSI['G']}train{ANSI['W']}    - Train CSI-Predictor model")
+        print(f"  {ANSI['G']}evaluate{ANSI['W']} - Evaluate CSI-Predictor model")
+        print(f"  {ANSI['G']}optimize{ANSI['W']} - Run hyperparameter optimization")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -46,6 +47,6 @@ if __name__ == "__main__":
         args = parser.parse_args()
         optimize_cli(args)
     else:
-        print(f"Unknown command: {command}")
-        print("Available commands: train, evaluate, optimize")
+        print(f"{ANSI['R']}Unknown command:{ANSI['W']} {command}")
+        print(f"{ANSI['B']}Available commands:{ANSI['W']} train, evaluate, optimize")
         sys.exit(1) 

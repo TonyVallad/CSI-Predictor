@@ -7,7 +7,7 @@ This module contains data loader functionality extracted from the original src/d
 import torch
 from torch.utils.data import DataLoader
 from typing import Tuple, Optional
-from ..config import Config, cfg
+from ..config import Config, cfg, ANSI
 from .preprocessing import load_csv_data, convert_nans_to_unknown, filter_existing_files
 from .splitting import split_data_stratified
 from .transforms import get_default_transforms
@@ -85,7 +85,7 @@ def create_data_loaders(
     
     # Load and split data if DataFrames not provided
     if train_df is None or val_df is None or test_df is None:
-        print("Loading and splitting data...")
+        print(f"{ANSI['B']}Loading and splitting data...{ANSI['W']}")
         train_df, val_df, test_df = load_and_split_data(
             data_path=config.data_path,
             image_extension=config.image_extension

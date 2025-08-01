@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import seaborn as sns
 from torchvision.utils import make_grid
+from ..config import ANSI
 
 def show_batch(
     data_loader: DataLoader,
@@ -54,7 +55,7 @@ def show_batch(
             images, labels = batch_data
             file_ids = None
     except StopIteration:
-        print("Data loader is empty")
+        print(f"{ANSI['Y']}Data loader is empty{ANSI['W']}")
         return
     
     # Limit to num_samples
@@ -86,10 +87,10 @@ def show_batch(
     denorm_images = images * std_tensor + mean_tensor
     denorm_images = torch.clamp(denorm_images, 0, 1)
     
-    print(f"Displaying batch with {config.normalization_strategy} denormalization")
-    print(f"Mean: {mean}, Std: {std}")
+    print(f"{ANSI['B']}Displaying batch with{ANSI['W']} {config.normalization_strategy} denormalization")
+    print(f"{ANSI['B']}Mean:{ANSI['W']} {mean}, {ANSI['B']}Std:{ANSI['W']} {std}")
     if file_ids:
-        print(f"File IDs: {file_ids}")
+        print(f"{ANSI['B']}File IDs:{ANSI['W']} {file_ids}")
     
     for i in range(batch_size):
         # Convert image to numpy for display
@@ -157,7 +158,7 @@ def show_batch(
     
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight', pad_inches=0.0)
-        print(f"Batch visualization saved to: {save_path}")
+        print(f"{ANSI['G']}Batch visualization saved to:{ANSI['W']} {save_path}")
     
     plt.show()
 
@@ -225,7 +226,7 @@ def visualize_data_distribution(
     
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"Distribution plot saved to {save_path}")
+        print(f"{ANSI['G']}Distribution plot saved to{ANSI['W']} {save_path}")
     
     plt.show()
 
