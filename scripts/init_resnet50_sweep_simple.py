@@ -9,6 +9,10 @@ import os
 from pathlib import Path
 import wandb
 
+# Disable legacy service warning and use modern API
+os.environ['WANDB_SILENT'] = 'true'
+os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
+
 def get_resnet50_sweep_config():
     """Get W&B sweep configuration for ResNet50."""
     return {
@@ -17,6 +21,9 @@ def get_resnet50_sweep_config():
             'name': 'val_f1_weighted',
             'goal': 'maximize'
         },
+        'command': [
+            'python', '-m', 'src.cli.main', '--mode', 'train'
+        ],
         'parameters': {
             # Fixed model parameters
             'model_arch': {
