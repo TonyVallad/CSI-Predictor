@@ -1,6 +1,7 @@
 # W&B Sweep Configuration for CSI-Predictor - ResNet50
 # This file defines the hyperparameter search space for ResNet50 model optimization
 
+name: "CSI-Predictor ResNet50 Hyperparameter Optimization"
 program: main.py
 method: bayes
 metric:

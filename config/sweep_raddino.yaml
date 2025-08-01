@@ -1,6 +1,7 @@
 # W&B Sweep Configuration for CSI-Predictor - RadDINO
 # This file defines the hyperparameter search space for RadDINO model optimization
 
+name: "CSI-Predictor RadDINO Hyperparameter Optimization"
 program: main.py
 method: bayes
 metric:

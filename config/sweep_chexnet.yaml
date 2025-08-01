@@ -1,6 +1,7 @@
 # W&B Sweep Configuration for CSI-Predictor - CheXNet
 # This file defines the hyperparameter search space for CheXNet model optimization
 
+name: "CSI-Predictor CheXNet Hyperparameter Optimization"
 program: main.py
 method: bayes
 metric:
