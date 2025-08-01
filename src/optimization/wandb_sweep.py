@@ -287,6 +287,11 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
         if early_stopping(val_metrics['f1_weighted_overall'], model):
             logger.info(f"Early stopping triggered at epoch {epoch}")
             break
+    
+    # Log final metric for W&B sweep optimization
+    final_val_f1 = val_metrics['f1_weighted_overall']
+    wandb.log({'val_f1_weighted': final_val_f1})
+    logger.info(f"Final val_f1_weighted: {final_val_f1}")
 
 def initialize_sweep(project_name: str, sweep_config: Dict[str, Any]) -> str:
     """
