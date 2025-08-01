@@ -38,6 +38,7 @@ def log_to_wandb(
         wandb.init(
             project="csi-predictor",
             name=eval_model_name,
+            dir=config.wandb_dir,
             config={
                 "model_path": model_path,
                 "model_arch": config.model_arch,

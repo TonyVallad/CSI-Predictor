@@ -252,7 +252,7 @@ def run_sweep_agent(sweep_id: str, config: Config) -> None:
         config: Configuration object
     """
     def train_function():
-        with wandb.init() as run:
+        with wandb.init(dir=config.wandb_dir) as run:
             # Get hyperparameters from W&B
             wandb_config = wandb.config
             
