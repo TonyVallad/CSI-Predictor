@@ -62,8 +62,7 @@ def create_scheduler(optimizer: optim.Optimizer, config: Config) -> optim.lr_sch
         optimizer, 
         mode='min', 
         patience=5, 
-        factor=0.5, 
-        verbose=True
+        factor=0.5
     )
     
     return scheduler

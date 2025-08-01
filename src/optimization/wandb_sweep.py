@@ -196,7 +196,7 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
         raise ValueError(f"Unknown optimizer: {config.optimizer}")
     
     # Create scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
     
     # Create callbacks
     early_stopping = EarlyStopping(patience=config.patience, min_delta=0.001)

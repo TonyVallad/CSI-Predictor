@@ -253,7 +253,7 @@ def objective(trial: optuna.trial.Trial, base_config: Config, max_epochs: int = 
         raise ValueError(f"Unknown optimizer: {config.optimizer}")
     
     # Create scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
     
     # Create callbacks
     early_stopping = EarlyStopping(patience=config.patience, min_delta=0.001)
