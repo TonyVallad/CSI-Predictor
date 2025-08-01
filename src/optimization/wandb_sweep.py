@@ -194,7 +194,6 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
         
         # Training Hyperparameters
         n_epochs=config.n_epochs,
-        patience=config.patience,
         
         # Model Configuration
         use_official_processor=config.use_official_processor,
