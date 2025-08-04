@@ -3,6 +3,8 @@
 
 name: "CSI-Predictor RadDINO Hyperparameter Optimization"
 program: sweep_train.py
+project: "csi-predictor"
+entity: "tony-vallad-chru-de-nancy"
 method: bayes
 metric:
   name: val_f1_weighted

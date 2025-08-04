@@ -1,6 +1,8 @@
 # Simple test sweep configuration
 name: "Test Sweep"
-program: test_sweep_simple.py
+program: simple_test.py
+project: "csi-predictor"
+entity: "tony-vallad-chru-de-nancy"
 method: random
 metric:
   name: val_f1_weighted

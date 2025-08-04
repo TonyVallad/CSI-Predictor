@@ -9,6 +9,11 @@ import sys
 import wandb
 from pathlib import Path
 
+# Disable legacy service and improve stability
+os.environ['WANDB_SILENT'] = 'true'
+os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
+os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
