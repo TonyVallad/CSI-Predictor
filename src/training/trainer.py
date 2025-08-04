@@ -15,6 +15,7 @@ from typing import Dict, Any, Optional, Tuple
 from tqdm import tqdm
 import wandb
 import pandas as pd
+import math
 
 from src.config import Config, cfg
 from src.data.dataloader import create_data_loaders
@@ -414,33 +415,49 @@ def train_model(config: Config) -> Path:
                 val_f1_weighted = val_metrics.get('f1_weighted_overall', val_metrics.get('f1_macro', 0.0))
                 train_f1_weighted = train_metrics.get('f1_weighted_overall', train_metrics.get('f1_macro', 0.0))
                 
-                # Ensure valid values
-                if torch.isnan(torch.tensor(val_f1_weighted)) or torch.isinf(torch.tensor(val_f1_weighted)):
+                # Ensure valid values - handle NaN and Inf
+                if isinstance(val_f1_weighted, (int, float)):
+                    if math.isnan(val_f1_weighted) or math.isinf(val_f1_weighted):
+                        val_f1_weighted = 0.0
+                else:
                     val_f1_weighted = 0.0
-                if torch.isnan(torch.tensor(train_f1_weighted)) or torch.isinf(torch.tensor(train_f1_weighted)):
+                    
+                if isinstance(train_f1_weighted, (int, float)):
+                    if math.isnan(train_f1_weighted) or math.isinf(train_f1_weighted):
+                        train_f1_weighted = 0.0
+                else:
                     train_f1_weighted = 0.0
                 
+                # Create log dictionary with all metrics
                 log_dict = {
                     'epoch': epoch,
-                    'train_loss': train_metrics['loss'],
-                    'train_f1_weighted': train_f1_weighted,
-                    'val_loss': val_metrics['loss'],
-                    'val_f1_weighted': val_f1_weighted,  # This is the key metric for the sweep
-                    'learning_rate': current_lr,
-                    'train_f1_macro': train_metrics['f1_macro'],
-                    'val_f1_macro': val_metrics['f1_macro'],
-                    'train_accuracy': train_metrics['accuracy'],
-                    'val_accuracy': val_metrics['accuracy'],
+                    'train_loss': float(train_metrics['loss']),
+                    'train_f1_weighted': float(train_f1_weighted),
+                    'val_loss': float(val_metrics['loss']),
+                    'val_f1_weighted': float(val_f1_weighted),  # This is the key metric for the sweep
+                    'learning_rate': float(current_lr),
+                    'train_f1_macro': float(train_metrics['f1_macro']),
+                    'val_f1_macro': float(val_metrics['f1_macro']),
+                    'train_accuracy': float(train_metrics['accuracy']),
+                    'val_accuracy': float(val_metrics['accuracy']),
                 }
                 
-                wandb.log(log_dict)
-                logger.info(f"Successfully logged to wandb: val_f1_weighted = {val_f1_weighted}")
+                # Log to wandb with explicit step
+                wandb.log(log_dict, step=epoch)
+                
+                logger.info(f"Successfully logged to wandb at epoch {epoch}: val_f1_weighted = {val_f1_weighted}")
                 logger.info(f"Wandb run ID: {wandb.run.id}")
+                
             except Exception as e:
-                logger.error(f"Failed to log to wandb: {e}")
+                logger.error(f"Failed to log to wandb at epoch {epoch}: {e}")
                 logger.error(f"Log dict: {log_dict}")
+                # Try to log just the error
+                try:
+                    wandb.log({'error': str(e)}, step=epoch)
+                except:
+                    pass
         else:
-            logger.info("Not in wandb context - skipping wandb logging")
+            logger.info(f"Not in wandb context - skipping wandb logging for epoch {epoch}")
         
         # Save best model
         if val_metrics["loss"] < best_val_loss:
@@ -464,13 +481,34 @@ def train_model(config: Config) -> Path:
     if is_wandb_run:
         try:
             # Use the best validation F1 score as the final metric
-            final_val_f1 = best_val_f1
-            wandb.log({'val_f1_weighted': final_val_f1})
+            final_val_f1 = float(best_val_f1)
+            
+            # Ensure it's a valid number
+            if math.isnan(final_val_f1) or math.isinf(final_val_f1):
+                final_val_f1 = 0.0
+                logger.warning("Best val_f1_weighted was NaN/Inf, setting to 0.0")
+            
+            # Log the final metric - this is what the sweep uses for optimization
+            wandb.log({'val_f1_weighted': final_val_f1}, step=cfg.n_epochs)
+            
             logger.info(f"Final val_f1_weighted logged to wandb: {final_val_f1}")
             logger.info(f"Wandb run ID: {wandb.run.id}")
             logger.info("Sweep run completed successfully!")
+            
+            # Also log a summary
+            wandb.log({
+                'best_val_f1_weighted': final_val_f1,
+                'final_epoch': cfg.n_epochs,
+                'training_completed': True
+            }, step=cfg.n_epochs)
+            
         except Exception as e:
             logger.error(f"Failed to log final metric to wandb: {e}")
+            # Try to log the error
+            try:
+                wandb.log({'error': str(e)}, step=cfg.n_epochs)
+            except:
+                pass
     else:
         logger.info("Not in wandb context - skipping final metric logging")
     

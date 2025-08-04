@@ -152,186 +152,57 @@ def get_sweep_config(model_arch: str = 'resnet50') -> Dict[str, Any]:
         }
     }
 
-def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
+def train_sweep_run_enhanced(config: Config, wandb_config: Dict[str, Any]) -> None:
     """
-    Train a single W&B sweep run.
+    Enhanced training function for W&B sweep runs with proper initialization and logging.
     
     Args:
-        config: Base configuration object
-        wandb_config: W&B configuration with hyperparameters
+        config: Configuration object
+        wandb_config: W&B sweep configuration
     """
-    # Set random seed for reproducibility
-    seed_everything(42)
+    import wandb
+    import os
     
-    # Update config with W&B hyperparameters
-    config = Config(
-        # Environment and Device Settings
-        device=config.device,
-        load_data_to_memory=config.load_data_to_memory,
-        
-        # Data Paths
-        data_source=config.data_source,
-        data_dir=config.data_dir,
-        nifti_dir=config.nifti_dir,
-        models_dir=config.models_dir,
-        csv_dir=config.csv_dir,
-        ini_dir=config.ini_dir,
-        png_dir=config.png_dir,
-        graph_dir=config.graph_dir,
-        debug_dir=config.debug_dir,
-        masks_dir=config.masks_dir,
-        logs_dir=config.logs_dir,
-        runs_dir=config.runs_dir,
-        evaluation_dir=config.evaluation_dir,
-        wandb_dir=config.wandb_dir,
-        
-        # Labels configuration
-        labels_csv=config.labels_csv,
-        labels_csv_separator=config.labels_csv_separator,
-        
-        # Data Filtering
-        excluded_file_ids=config.excluded_file_ids,
-        
-        # Training Hyperparameters
-        n_epochs=config.n_epochs,
-        
-        # Model Configuration
-        use_official_processor=config.use_official_processor,
-        use_segmentation_masking=config.use_segmentation_masking,
-        masking_strategy=config.masking_strategy,
-        masks_path=config.masks_path,
-        image_format=config.image_format,
-        image_extension=config.image_extension,
-        custom_mean=config.custom_mean,
-        custom_std=config.custom_std,
-        
-        # Use W&B hyperparameters
-        learning_rate=wandb_config['learning_rate'],
-        batch_size=wandb_config['batch_size'],
-        optimizer=wandb_config['optimizer'],
-        weight_decay=wandb_config['weight_decay'],
-        dropout_rate=wandb_config['dropout_rate'],
-        model_arch=wandb_config['model_arch'],
-        normalization_strategy=wandb_config['normalization_strategy'],
-        patience=wandb_config['patience'],
-    )
+    # Set wandb environment variables for stability
+    os.environ['WANDB_SILENT'] = 'true'
+    os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
     
-    # Get cached data loaders
-    train_loader, val_loader, _ = get_cached_data_loaders(config)
+    logger.info("Starting enhanced wandb sweep training...")
     
-    # Load CSV data for metrics computation
-    import pandas as pd
-    csv_path = Path(config.csv_dir) / config.labels_csv
-    csv_data = pd.read_csv(csv_path, sep=config.labels_csv_separator) if csv_path.exists() else None
-    
-    # Build model
-    device = torch.device(config.device if torch.cuda.is_available() else "cpu")
-    model = build_model(config)
-    model.to(device)
-    
-    # Create loss function with unknown weight from sweep
-    unknown_weight = wandb_config.get('unknown_weight', 0.5)
-    criterion = WeightedCSILoss(unknown_weight=unknown_weight)
-    
-    # Create optimizer
-    if config.optimizer.lower() == 'adam':
-        optimizer = optim.Adam(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
-    elif config.optimizer.lower() == 'adamw':
-        optimizer = optim.AdamW(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
-    elif config.optimizer.lower() == 'sgd':
-        optimizer = optim.SGD(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay, momentum=0.9)
-    else:
-        raise ValueError(f"Unknown optimizer: {config.optimizer}")
-    
-    # Create scheduler based on sweep configuration
-    scheduler_type = wandb_config.get('scheduler_type', 'ReduceLROnPlateau')
-    if scheduler_type == 'ReduceLROnPlateau':
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
-    elif scheduler_type == 'CosineAnnealingLR':
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.n_epochs)
-    else:
-        raise ValueError(f"Unknown scheduler type: {scheduler_type}")
-    
-    # Create callbacks
-    early_stopping = EarlyStopping(patience=config.patience, min_delta=0.001)
-    metrics_tracker = MetricsTracker()
-    
-    # Training loop
-    best_val_f1 = 0.0
-    for epoch in range(config.n_epochs):
-        # Training
-        train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, epoch, csv_data, config)
-        
-        # Validation
-        val_metrics = validate_epoch(model, val_loader, criterion, device, csv_data, config)
-        
-        # Update scheduler based on type
-        if scheduler_type == 'ReduceLROnPlateau':
-            scheduler.step(val_metrics['f1_weighted_overall'])
-        elif scheduler_type == 'CosineAnnealingLR':
-            scheduler.step()
-        
-        # Ensure we have valid metrics before logging
-        val_f1_weighted = val_metrics.get('f1_weighted_overall', 0.0)
-        train_f1_weighted = train_metrics.get('f1_weighted_overall', 0.0)
-        
-        # Check for NaN or invalid values
-        if torch.isnan(torch.tensor(val_f1_weighted)) or torch.isinf(torch.tensor(val_f1_weighted)):
-            logger.warning(f"Invalid val_f1_weighted detected: {val_f1_weighted}, using 0.0")
-            val_f1_weighted = 0.0
-        
-        if torch.isnan(torch.tensor(train_f1_weighted)) or torch.isinf(torch.tensor(train_f1_weighted)):
-            logger.warning(f"Invalid train_f1_weighted detected: {train_f1_weighted}, using 0.0")
-            train_f1_weighted = 0.0
-        
-        # Log to W&B with explicit metric names
-        log_dict = {
-            'epoch': epoch,
-            'train_loss': train_metrics['loss'],
-            'train_f1_weighted': train_f1_weighted,
-            'val_loss': val_metrics['loss'],
-            'val_f1_weighted': val_f1_weighted,  # This is the key metric for the sweep
-            'learning_rate': optimizer.param_groups[0]['lr']
-        }
-        
-        # Add additional debugging metrics
-        log_dict.update({
-            'train_f1_macro': train_metrics.get('f1_macro', 0.0),
-            'val_f1_macro': val_metrics.get('f1_macro', 0.0),
-            'train_accuracy': train_metrics.get('accuracy', 0.0),
-            'val_accuracy': val_metrics.get('accuracy', 0.0),
-        })
-        
+    # Initialize wandb if not already initialized
+    if wandb.run is None:
+        logger.info("Initializing wandb run for sweep...")
         try:
-            wandb.log(log_dict)
-            logger.info(f"Successfully logged to wandb: val_f1_weighted = {val_f1_weighted}")
+            wandb.init()
+            logger.info(f"Wandb run initialized with ID: {wandb.run.id}")
         except Exception as e:
-            logger.error(f"Failed to log to wandb: {e}")
-            logger.error(f"Log dict: {log_dict}")
-        
-        # Debug logging
-        logger.info(f"Epoch {epoch}: val_f1_weighted = {val_f1_weighted}")
-        
-        # Track best validation F1
-        if val_f1_weighted > best_val_f1:
-            best_val_f1 = val_f1_weighted
-        
-        # Early stopping based on validation F1 score
-        if early_stopping(val_f1_weighted, model):
-            logger.info(f"Early stopping triggered at epoch {epoch}")
-            break
+            logger.error(f"Failed to initialize wandb: {e}")
+            raise
     
-    # Log final metric for W&B sweep optimization - this is crucial for the sweep
-    final_val_f1 = best_val_f1  # Use the best validation F1 score
+    # Update configuration with sweep hyperparameters
+    config_updates = {}
+    for key, value in wandb_config.items():
+        if hasattr(config, key):
+            setattr(config, key, value)
+            config_updates[key] = value
+            logger.info(f"Updated config.{key} = {value}")
     
-    # Ensure the final metric is logged with the exact name expected by the sweep
+    logger.info(f"Configuration updated with sweep parameters: {config_updates}")
+    
+    # Run training with enhanced logging
     try:
-        wandb.log({'val_f1_weighted': final_val_f1})
-        logger.info(f"Final val_f1_weighted logged to wandb: {final_val_f1}")
+        from src.training.trainer import train_model
+        train_model(config)
+        logger.info("Enhanced sweep training completed successfully!")
     except Exception as e:
-        logger.error(f"Failed to log final metric to wandb: {e}")
-    
-    logger.info(f"Final val_f1_weighted: {final_val_f1}")
+        logger.error(f"Enhanced sweep training failed: {e}")
+        # Log error to wandb
+        if wandb.run is not None:
+            try:
+                wandb.log({'error': str(e)})
+            except:
+                pass
+        raise
 
 def initialize_sweep(project_name: str, sweep_config: Dict[str, Any]) -> str:
     """
@@ -350,7 +221,7 @@ def initialize_sweep(project_name: str, sweep_config: Dict[str, Any]) -> str:
 
 def run_sweep_agent(sweep_id: str, config: Config) -> None:
     """
-    Run W&B sweep agent.
+    Run W&B sweep agent with enhanced error handling.
     
     Args:
         sweep_id: W&B sweep ID
@@ -358,25 +229,27 @@ def run_sweep_agent(sweep_id: str, config: Config) -> None:
     """
     def train_function():
         try:
-            logger.info("Initializing wandb run for sweep...")
-            with wandb.init(dir=config.wandb_dir) as run:
-                logger.info(f"Wandb run initialized successfully: {run.id}")
-                
-                # Get hyperparameters from W&B
-                wandb_config = wandb.config
-                logger.info(f"Wandb config received: {dict(wandb_config)}")
-                
-                # Train the model
-                train_sweep_run(config, wandb_config)
-                
-                logger.info("Sweep run completed successfully")
+            logger.info("Starting sweep run...")
+            # Use the enhanced training function
+            train_sweep_run_enhanced(config, wandb.config)
+            logger.info("Sweep run completed successfully!")
         except Exception as e:
-            logger.error(f"Error in sweep run: {e}")
+            logger.error(f"Sweep run failed: {e}")
+            # Log error to wandb
+            if wandb.run is not None:
+                try:
+                    wandb.log({'error': str(e)})
+                except:
+                    pass
             raise
     
-    # Run the agent
-    logger.info(f"Starting wandb agent for sweep {sweep_id}")
-    wandb.agent(sweep_id, train_function, count=None)  # Run until sweep is complete
+    logger.info(f"Starting W&B sweep agent for sweep ID: {sweep_id}")
+    try:
+        wandb.agent(sweep_id, train_function, count=None)  # Run until sweep is complete
+        logger.info("Sweep agent completed successfully!")
+    except Exception as e:
+        logger.error(f"Sweep agent failed: {e}")
+        raise
 
 def create_and_run_sweep(
     project_name: str = "csi-sweep",
