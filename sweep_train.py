@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-# Set environment variables BEFORE importing wandb
+# Set environment variables BEFORE ANY imports
 # This prevents wandb from creating folders in the project root
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
@@ -17,7 +17,13 @@ os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+# Import config to get the wandb directory
 from src.config import cfg, get_config
+
+# Set wandb directory environment variable BEFORE importing wandb
+# This is crucial to prevent wandb from creating folders in the current directory
+base_config = get_config()
+os.environ['WANDB_DIR'] = base_config.wandb_dir
 
 # Now import wandb after setting environment variables
 import wandb
@@ -29,13 +35,6 @@ def main():
     Main training function for W&B sweep.
     This follows the official W&B sweep pattern.
     """
-    # Get the base configuration
-    base_config = get_config()
-    
-    # Set wandb directory environment variable globally
-    # This prevents wandb from creating a .wandb folder in the current directory
-    os.environ['WANDB_DIR'] = base_config.wandb_dir
-    
     # Ensure the wandb directory exists
     os.makedirs(base_config.wandb_dir, exist_ok=True)
     
