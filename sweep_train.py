@@ -8,6 +8,7 @@ import os
 import sys
 import wandb
 from pathlib import Path
+from dataclasses import replace
 
 # Disable legacy service and improve stability
 os.environ['WANDB_SILENT'] = 'true'
@@ -17,7 +18,7 @@ os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from src.config import cfg
+from src.config import cfg, get_config
 from src.training.trainer import train_model
 
 def main():
@@ -30,19 +31,24 @@ def main():
         print(f"Wandb run initialized: {run.id}")
         print(f"Wandb config: {dict(run.config)}")
         
-        # Update configuration with sweep hyperparameters
+        # Get the base configuration
+        base_config = get_config()
+        
+        # Create a mutable copy of the configuration with sweep hyperparameters
         config_updates = {}
         for key, value in run.config.items():
-            if hasattr(cfg, key):
-                setattr(cfg, key, value)
+            if hasattr(base_config, key):
                 config_updates[key] = value
-                print(f"Updated config.{key} = {value}")
+                print(f"Will update config.{key} = {value}")
         
-        print(f"Configuration updated: {config_updates}")
+        print(f"Configuration updates: {config_updates}")
         
-        # Run training
+        # Create a new mutable configuration with the sweep parameters
+        mutable_config = replace(base_config, **config_updates)
+        
+        # Run training with the mutable configuration
         try:
-            train_model(cfg)
+            train_model(mutable_config)
             print("Training completed successfully!")
         except Exception as e:
             print(f"Training failed: {e}")
