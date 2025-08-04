@@ -120,7 +120,15 @@ def train_epoch(
     # Compute F1 metrics and accuracy
     all_pred_tensor = torch.cat(all_predictions, dim=0)
     all_target_tensor = torch.cat(all_targets, dim=0)
-    f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
+    
+    # Compute metrics
+    # Check if all targets are unknown class (4)
+    unique_targets = torch.unique(all_target_tensor)
+    if len(unique_targets) == 1 and unique_targets[0] == 4:
+        logger.warning("All targets are unknown class (4). Using F1 computation that includes unknown class.")
+        f1_metrics = compute_f1_metrics_with_unknown(all_pred_tensor, all_target_tensor)
+    else:
+        f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
     pr_metrics = compute_precision_recall(all_pred_tensor, all_target_tensor)
     
     # Compute accuracy
@@ -221,7 +229,15 @@ def validate_epoch(
     # Compute F1 metrics and accuracy
     all_pred_tensor = torch.cat(all_predictions, dim=0)
     all_target_tensor = torch.cat(all_targets, dim=0)
-    f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
+    
+    # Check if all targets are unknown class (4)
+    unique_targets = torch.unique(all_target_tensor)
+    if len(unique_targets) == 1 and unique_targets[0] == 4:
+        logger.warning("All targets are unknown class (4). Using F1 computation that includes unknown class.")
+        from .metrics import compute_f1_metrics_with_unknown
+        f1_metrics = compute_f1_metrics_with_unknown(all_pred_tensor, all_target_tensor)
+    else:
+        f1_metrics = compute_f1_metrics(all_pred_tensor, all_target_tensor)
     pr_metrics = compute_precision_recall(all_pred_tensor, all_target_tensor)
     
     # Compute accuracy

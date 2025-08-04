@@ -22,6 +22,25 @@ def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict
     Returns:
         Dictionary with F1 metrics
     """
+    # Debug: Check data distribution before computation
+    unique_targets = torch.unique(targets)
+    target_counts = {val.item(): (targets == val).sum().item() for val in unique_targets}
+    logger.info(f"Target distribution: {target_counts}")
+    
+    # Check if all targets are unknown class (4)
+    if len(unique_targets) == 1 and unique_targets[0] == 4:
+        logger.warning("All targets are unknown class (4). This will result in zero valid samples for F1 computation.")
+        logger.warning("Consider using ignore_index=None to include unknown class in evaluation.")
+        
+        # Return zero metrics but with clear indication
+        return {
+            'f1_macro': 0.0,
+            'f1_weighted_macro': 0.0,
+            'f1_overall': 0.0,
+            'f1_weighted_overall': 0.0,
+            'warning': 'all_targets_unknown_class'
+        }
+    
     # IMPORTANT: Use consistent ignore_index strategy 
     # For medical CSI scores, we recommend ignore_index=4 to focus on gradable cases
     # Change to ignore_index=None if you want to include unknown class in evaluation
@@ -47,6 +66,55 @@ def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict
         f1_macro = 0.0
     
     logger.debug(f"Computed metrics - f1_weighted_overall: {f1_weighted_overall}, f1_macro: {f1_macro}")
+    
+    # Return key metrics with backwards compatibility
+    return {
+        'f1_macro': f1_macro,
+        'f1_weighted_macro': enhanced_metrics.get('f1_weighted_macro', 0.0),
+        'f1_overall': enhanced_metrics.get('f1_overall', 0.0),
+        'f1_weighted_overall': f1_weighted_overall,  # Consistent key name
+        # Keep individual zone metrics
+        **{k: v for k, v in enhanced_metrics.items() if k.startswith('f1_zone_')}
+    }
+
+
+def compute_f1_metrics_with_unknown(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, float]:
+    """
+    Compute F1 scores for CSI prediction including unknown class (class 4).
+    
+    Args:
+        predictions: Model predictions [batch_size, n_zones, n_classes]
+        targets: Ground truth labels [batch_size, n_zones]
+        
+    Returns:
+        Dictionary with F1 metrics including unknown class
+    """
+    # Debug: Check data distribution before computation
+    unique_targets = torch.unique(targets)
+    target_counts = {val.item(): (targets == val).sum().item() for val in unique_targets}
+    logger.info(f"Target distribution (including unknown): {target_counts}")
+    
+    # Include unknown class in evaluation (ignore_index=None)
+    enhanced_metrics = compute_enhanced_f1_metrics(
+        predictions, targets, 
+        ignore_index=None,  # Include unknown class in evaluation
+        include_per_class=False
+    )
+    
+    # Debug logging for metric computation
+    f1_weighted_overall = enhanced_metrics.get('f1_weighted_overall', 0.0)
+    f1_macro = enhanced_metrics.get('f1_macro', 0.0)
+    
+    # Check for invalid values
+    if torch.isnan(torch.tensor(f1_weighted_overall)) or torch.isinf(torch.tensor(f1_weighted_overall)):
+        logger.warning(f"Invalid f1_weighted_overall detected: {f1_weighted_overall}, using 0.0")
+        f1_weighted_overall = 0.0
+    
+    if torch.isnan(torch.tensor(f1_macro)) or torch.isinf(torch.tensor(f1_macro)):
+        logger.warning(f"Invalid f1_macro detected: {f1_macro}, using 0.0")
+        f1_macro = 0.0
+    
+    logger.debug(f"Computed metrics (with unknown) - f1_weighted_overall: {f1_weighted_overall}, f1_macro: {f1_macro}")
     
     # Return key metrics with backwards compatibility
     return {

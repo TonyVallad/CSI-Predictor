@@ -38,10 +38,12 @@ def compute_f1_from_confusion_matrix(cm: torch.Tensor, average: str = 'macro') -
     
     # Handle averaging
     if average == 'macro':
-        return f1.mean()
+        result = f1.mean()
+        return result
     elif average == 'weighted':
         support = cm.sum(dim=1)
-        return (f1 * support).sum() / support.sum()
+        result = (f1 * support).sum() / support.sum()
+        return result
     elif average == 'micro':
         # Micro-average: compute metrics globally
         tp_total = tp.sum()
@@ -51,7 +53,8 @@ def compute_f1_from_confusion_matrix(cm: torch.Tensor, average: str = 'macro') -
         precision_micro = tp_total / (tp_total + fp_total + 1e-8)
         recall_micro = tp_total / (tp_total + fn_total + 1e-8)
         
-        return 2 * (precision_micro * recall_micro) / (precision_micro + recall_micro + 1e-8)
+        result = 2 * (precision_micro * recall_micro) / (precision_micro + recall_micro + 1e-8)
+        return result
     else:
         raise ValueError(f"Unsupported average method: {average}")
 
@@ -161,14 +164,22 @@ def compute_enhanced_f1_metrics(
     """
     from .confusion_matrix import compute_confusion_matrix
     
+    # Debug: Print input shapes and values
+    print(f"DEBUG: predictions shape: {predictions.shape}, targets shape: {targets.shape}")
+    print(f"DEBUG: targets unique values: {torch.unique(targets).tolist()}")
+    print(f"DEBUG: ignore_index: {ignore_index}")
+    
     # Convert predictions to class indices
     pred_classes = torch.argmax(predictions, dim=-1)  # [batch_size, n_zones]
+    print(f"DEBUG: pred_classes unique values: {torch.unique(pred_classes).tolist()}")
     
     # Create mask for valid targets
     if ignore_index is not None:
         mask = (targets != ignore_index)
     else:
         mask = torch.ones_like(targets, dtype=torch.bool)
+    
+    print(f"DEBUG: valid samples ratio: {mask.sum().float() / mask.numel():.4f}")
     
     f1_metrics = {}
     zone_names = ["zone_1", "zone_2", "zone_3", "zone_4", "zone_5", "zone_6"]
@@ -180,6 +191,7 @@ def compute_enhanced_f1_metrics(
     
     for i, zone_name in enumerate(zone_names):
         zone_mask = mask[:, i]
+        
         if zone_mask.sum() > 0:  # Only compute if there are valid samples
             zone_pred = pred_classes[:, i][zone_mask]
             zone_true = targets[:, i][zone_mask]
@@ -225,6 +237,7 @@ def compute_enhanced_f1_metrics(
         
         # Compute overall confusion matrix
         cm_overall = compute_confusion_matrix(all_pred, all_true, num_classes=5)
+        
         f1_overall = compute_f1_from_confusion_matrix(cm_overall, average='macro')
         f1_weighted_overall = compute_f1_from_confusion_matrix(cm_overall, average='weighted')
         
@@ -243,6 +256,7 @@ def compute_enhanced_f1_metrics(
             for class_name in class_names:
                 f1_metrics[f"f1_overall_{class_name.lower()}"] = 0.0
     
+    print(f"DEBUG: Final f1_weighted_overall: {f1_metrics.get('f1_weighted_overall', 'NOT_FOUND')}")
     return f1_metrics
 
 __version__ = "1.0.0"
