@@ -38,6 +38,7 @@ from ..utils.discord_notifier import send_training_notification
 from .loss import WeightedCSILoss
 from .metrics import compute_f1_metrics, compute_f1_metrics_with_unknown, compute_precision_recall, compute_csi_average_metrics, compute_ahf_classification_metrics
 from .callbacks import EarlyStopping, MetricsTracker
+from .optimizer import create_optimizer, create_scheduler
 
 def set_random_seeds(seed: int = 42) -> None:
     """
@@ -292,35 +293,10 @@ def train_model(config: Config) -> Path:
     import wandb
     is_wandb_run = wandb.run is not None
     
-    # Update config with wandb hyperparameters if in sweep context
+    # Note: Config should already be updated with wandb hyperparameters in sweep_train.py
+    # No need to modify config here since it's already mutable
     if is_wandb_run:
-        try:
-            wandb_config = wandb.config
-            logger.info(f"Wandb config received: {dict(wandb_config)}")
-            
-            # Update config with sweep hyperparameters
-            if hasattr(wandb_config, 'learning_rate'):
-                config.learning_rate = wandb_config.learning_rate
-            if hasattr(wandb_config, 'batch_size'):
-                config.batch_size = wandb_config.batch_size
-            if hasattr(wandb_config, 'optimizer'):
-                config.optimizer = wandb_config.optimizer
-            if hasattr(wandb_config, 'weight_decay'):
-                config.weight_decay = wandb_config.weight_decay
-            if hasattr(wandb_config, 'dropout_rate'):
-                config.dropout_rate = wandb_config.dropout_rate
-            if hasattr(wandb_config, 'model_arch'):
-                config.model_arch = wandb_config.model_arch
-            if hasattr(wandb_config, 'normalization_strategy'):
-                config.normalization_strategy = wandb_config.normalization_strategy
-            if hasattr(wandb_config, 'patience'):
-                config.patience = wandb_config.patience
-            if hasattr(wandb_config, 'use_official_processor'):
-                config.use_official_processor = wandb_config.use_official_processor
-            
-            logger.info("Updated config with wandb hyperparameters")
-        except Exception as e:
-            logger.warning(f"Failed to update config with wandb hyperparameters: {e}")
+        logger.info(f"Wandb config received: {dict(wandb.config)}")
     
     # Create run directory for this training session
     from src.utils.file_utils import create_run_directory
@@ -348,12 +324,10 @@ def train_model(config: Config) -> Path:
         logger.info("CSI average metrics will be computed without CSV ground truth comparison")
     
     # Create model
-    from src.models.factory import build_model
     model = build_model(config)
     model = model.to(device)
     
     # Setup optimizer and scheduler
-    from src.training.optimizer import create_optimizer
     optimizer = create_optimizer(model, config)
     scheduler = create_scheduler(optimizer, config)
     
@@ -362,7 +336,6 @@ def train_model(config: Config) -> Path:
     if is_wandb_run and hasattr(wandb.config, 'unknown_weight'):
         unknown_weight = wandb.config.unknown_weight
     
-    from src.training.loss import WeightedCSILoss
     criterion = WeightedCSILoss(unknown_weight=unknown_weight)
     criterion = criterion.to(device)  # Move criterion to same device as model
     
@@ -496,7 +469,7 @@ def train_model(config: Config) -> Path:
                 logger.warning("Best val_f1_weighted was NaN/Inf, setting to 0.0")
             
             # Log the final metric - this is what the sweep uses for optimization
-            wandb.log({'val_f1_weighted': final_val_f1}, step=cfg.n_epochs)
+            wandb.log({'val_f1_weighted': final_val_f1}, step=config.n_epochs)
             
             logger.info(f"Final val_f1_weighted logged to wandb: {final_val_f1}")
             logger.info(f"Wandb run ID: {wandb.run.id}")
@@ -505,15 +478,15 @@ def train_model(config: Config) -> Path:
             # Also log a summary
             wandb.log({
                 'best_val_f1_weighted': final_val_f1,
-                'final_epoch': cfg.n_epochs,
+                'final_epoch': config.n_epochs,
                 'training_completed': True
-            }, step=cfg.n_epochs)
+            }, step=config.n_epochs)
             
         except Exception as e:
             logger.error(f"Failed to log final metric to wandb: {e}")
             # Try to log the error
             try:
-                wandb.log({'error': str(e)}, step=cfg.n_epochs)
+                wandb.log({'error': str(e)}, step=config.n_epochs)
             except:
                 pass
     else:
