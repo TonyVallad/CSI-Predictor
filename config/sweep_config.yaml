@@ -1,65 +1,74 @@
-# W&B Sweep Configuration for CSI-Predictor
-# This file defines the hyperparameter search space and optimization strategy
+# W&B Sweep Configuration for CSI-Predictor - General
+# This file defines the hyperparameter search space for general model optimization
 
-program: main.py
+name: "CSI-Predictor General Hyperparameter Optimization"
+program: sweep_train.py
 method: bayes
 metric:
   name: val_f1_weighted
   goal: maximize
 
 parameters:
-  # Model architecture
+  # Model architecture selection
   model_arch:
-    values: ['ResNet50', 'CheXNet', 'Custom_1', 'RadDINO']
+    values: ['resnet50', 'chexnet', 'raddino']
   
-  # RadDINO-specific preprocessing (conditional on model_arch being RadDINO)
+  # Preprocessing parameters
   use_official_processor:
     values: [true, false]
+  
+  # Batch size - varies by model
+  batch_size:
+    values: [8, 16, 32, 64, 128]
   
   # Optimizer settings
   optimizer:
     values: ['adam', 'adamw', 'sgd']
   
+  # Learning rate - wide range for different models
   learning_rate:
     distribution: log_uniform_values
     min: 0.00001
-    max: 0.1
+    max: 0.01
   
-  # Training parameters
-  batch_size:
-    values: [16, 32, 64, 128]
+  # Weight decay
+  weight_decay:
+    distribution: log_uniform_values
+    min: 0.000001
+    max: 0.001
   
-  # Loss function parameters
+  # Dropout rate
+  dropout_rate:
+    distribution: uniform
+    min: 0.1
+    max: 0.7
+  
+  # Momentum (for SGD)
+  momentum:
+    distribution: uniform
+    min: 0.8
+    max: 0.99
+  
+  # Normalization strategy
+  normalization_strategy:
+    values: ['imagenet', 'medical']
+  
+  # Scheduler type
+  scheduler_type:
+    values: ['ReduceLROnPlateau', 'CosineAnnealingLR']
+  
+  # Loss function weights for class imbalance
   unknown_weight:
     distribution: uniform
     min: 0.1
     max: 1.0
   
-  # Early stopping
+  # Early stopping patience
   patience:
-    values: [15]
-  
-  # Optimizer-specific parameters (conditional)
-  weight_decay:
-    distribution: log_uniform_values
-    min: 0.000001
-    max: 0.01
-  
-  momentum:
-    distribution: uniform
-    min: 0.5
-    max: 0.99
+    values: [10, 15, 20]
 
 # Early termination for poor performing runs
 early_terminate:
   type: hyperband
-  min_iter: 3
-  eta: 2
-
-# Command to run for each sweep trial
-command:
-  - python
-  - -m
-  - src.cli.main
-  - --mode
-  - sweep-train 
+  min_iter: 5
+  eta: 3 

@@ -2,7 +2,7 @@
 # This file defines the hyperparameter search space for ResNet50 model optimization
 
 name: "CSI-Predictor ResNet50 Hyperparameter Optimization"
-program: main.py
+program: sweep_train.py
 method: bayes
 metric:
   name: val_f1_weighted
@@ -71,12 +71,4 @@ parameters:
 early_terminate:
   type: hyperband
   min_iter: 5
-  eta: 3
-
-# Command to run for each sweep trial
-command:
-  - python
-  - -m
-  - src.cli.main
-  - --mode
-  - sweep-train 
+  eta: 3 

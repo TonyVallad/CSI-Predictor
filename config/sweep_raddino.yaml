@@ -2,7 +2,7 @@
 # This file defines the hyperparameter search space for RadDINO model optimization
 
 name: "CSI-Predictor RadDINO Hyperparameter Optimization"
-program: main.py
+program: sweep_train.py
 method: bayes
 metric:
   name: val_f1_weighted
@@ -13,11 +13,11 @@ parameters:
   model_arch:
     value: 'raddino'
   
-  # Fixed preprocessing parameters - RadDINO requires official processor
+  # Fixed preprocessing parameters
   use_official_processor:
     value: true
   
-  # Fixed batch size for RadDINO (smaller due to memory requirements)
+  # Fixed batch size for RadDINO
   batch_size:
     value: 8
   
@@ -25,7 +25,7 @@ parameters:
   optimizer:
     values: ['adam', 'adamw', 'sgd']
   
-  # Learning rate - Vision transformers often need lower learning rates
+  # Learning rate - RadDINO typically uses very low learning rates
   learning_rate:
     distribution: log_uniform_values
     min: 0.00001
@@ -71,12 +71,4 @@ parameters:
 early_terminate:
   type: hyperband
   min_iter: 5
-  eta: 3
-
-# Command to run for each sweep trial
-command:
-  - python
-  - -m
-  - src.cli.main
-  - --mode
-  - sweep-train 
+  eta: 3 

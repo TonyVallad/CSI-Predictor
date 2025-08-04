@@ -2,7 +2,7 @@
 # This file defines the hyperparameter search space for CheXNet model optimization
 
 name: "CSI-Predictor CheXNet Hyperparameter Optimization"
-program: main.py
+program: sweep_train.py
 method: bayes
 metric:
   name: val_f1_weighted
@@ -25,7 +25,7 @@ parameters:
   optimizer:
     values: ['adam', 'adamw', 'sgd']
   
-  # Learning rate - CheXNet designed for chest X-rays, moderate learning rates
+  # Learning rate - CheXNet typically uses lower learning rates
   learning_rate:
     distribution: log_uniform_values
     min: 0.00005
@@ -71,12 +71,4 @@ parameters:
 early_terminate:
   type: hyperband
   min_iter: 5
-  eta: 3
-
-# Command to run for each sweep trial
-command:
-  - python
-  - -m
-  - src.cli.main
-  - --mode
-  - sweep-train 
+  eta: 3 
