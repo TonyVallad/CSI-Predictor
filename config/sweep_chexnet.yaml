@@ -10,13 +10,6 @@ metric:
   name: val_f1_weighted
   goal: maximize
 
-# Environment variables to set for all runs
-env:
-  WANDB_DIR: "/home/pyuser/data/Paradise/wandb"
-  WANDB_SILENT: "true"
-  WANDB_DISABLE_ARTIFACT: "true"
-  WANDB_REQUIRE_SERVICE: "false"
-
 parameters:
   # Fixed model parameters
   model_arch:

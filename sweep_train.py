@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 # Set environment variables BEFORE ANY imports
-# This prevents wandb from creating folders in the project root
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
 os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
@@ -21,7 +20,6 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src.config import cfg, get_config
 
 # Set wandb directory environment variable BEFORE importing wandb
-# This is crucial to prevent wandb from creating folders in the current directory
 base_config = get_config()
 os.environ['WANDB_DIR'] = base_config.wandb_dir
 
@@ -41,8 +39,6 @@ def main():
     print(f"Using wandb directory: {base_config.wandb_dir}")
     
     # Initialize wandb - this is crucial for sweep functionality
-    # Note: wandb will create a 'wandb' subfolder inside our specified directory
-    # To avoid nested folders, we specify the parent directory
     wandb_parent_dir = os.path.dirname(base_config.wandb_dir)
     print(f"Wandb parent directory: {wandb_parent_dir}")
     
