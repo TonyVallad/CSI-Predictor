@@ -280,6 +280,40 @@ def train_model(config: Config) -> Path:
     Returns:
         Path to the run directory
     """
+    # Check if we're in a wandb sweep context
+    import wandb
+    is_wandb_run = wandb.run is not None
+    
+    # Update config with wandb hyperparameters if in sweep context
+    if is_wandb_run:
+        try:
+            wandb_config = wandb.config
+            logger.info(f"Wandb config received: {dict(wandb_config)}")
+            
+            # Update config with sweep hyperparameters
+            if hasattr(wandb_config, 'learning_rate'):
+                config.learning_rate = wandb_config.learning_rate
+            if hasattr(wandb_config, 'batch_size'):
+                config.batch_size = wandb_config.batch_size
+            if hasattr(wandb_config, 'optimizer'):
+                config.optimizer = wandb_config.optimizer
+            if hasattr(wandb_config, 'weight_decay'):
+                config.weight_decay = wandb_config.weight_decay
+            if hasattr(wandb_config, 'dropout_rate'):
+                config.dropout_rate = wandb_config.dropout_rate
+            if hasattr(wandb_config, 'model_arch'):
+                config.model_arch = wandb_config.model_arch
+            if hasattr(wandb_config, 'normalization_strategy'):
+                config.normalization_strategy = wandb_config.normalization_strategy
+            if hasattr(wandb_config, 'patience'):
+                config.patience = wandb_config.patience
+            if hasattr(wandb_config, 'use_official_processor'):
+                config.use_official_processor = wandb_config.use_official_processor
+            
+            logger.info("Updated config with wandb hyperparameters")
+        except Exception as e:
+            logger.warning(f"Failed to update config with wandb hyperparameters: {e}")
+    
     # Create run directory for this training session
     from src.utils.file_utils import create_run_directory
     run_dir = create_run_directory(config, run_type="train")
@@ -315,9 +349,13 @@ def train_model(config: Config) -> Path:
     optimizer = create_optimizer(model, config)
     scheduler = create_scheduler(optimizer, config)
     
-    # Setup loss function
+    # Setup loss function with unknown weight from sweep if available
+    unknown_weight = 0.3  # default
+    if is_wandb_run and hasattr(wandb.config, 'unknown_weight'):
+        unknown_weight = wandb.config.unknown_weight
+    
     from src.training.loss import WeightedCSILoss
-    criterion = WeightedCSILoss(unknown_weight=0.3)  # 30% weight for unknown class
+    criterion = WeightedCSILoss(unknown_weight=unknown_weight)
     criterion = criterion.to(device)  # Move criterion to same device as model
     
     # Early stopping
@@ -369,6 +407,35 @@ def train_model(config: Config) -> Path:
         logger.info(f"  Val   - Loss: {val_metrics['loss']:.4f}, F1 Macro: {val_metrics['f1_macro']:.4f}, Accuracy: {val_metrics['accuracy']:.4f}")
         logger.info(f"  Learning Rate: {current_lr:.6f}")
         
+        # Log to wandb if in sweep context
+        if is_wandb_run:
+            try:
+                # Get the key metric for sweep optimization
+                val_f1_weighted = val_metrics.get('f1_weighted_overall', val_metrics.get('f1_macro', 0.0))
+                train_f1_weighted = train_metrics.get('f1_weighted_overall', train_metrics.get('f1_macro', 0.0))
+                
+                # Ensure valid values
+                if torch.isnan(torch.tensor(val_f1_weighted)) or torch.isinf(torch.tensor(val_f1_weighted)):
+                    val_f1_weighted = 0.0
+                if torch.isnan(torch.tensor(train_f1_weighted)) or torch.isinf(torch.tensor(train_f1_weighted)):
+                    train_f1_weighted = 0.0
+                
+                wandb.log({
+                    'epoch': epoch,
+                    'train_loss': train_metrics['loss'],
+                    'train_f1_weighted': train_f1_weighted,
+                    'val_loss': val_metrics['loss'],
+                    'val_f1_weighted': val_f1_weighted,  # This is the key metric for the sweep
+                    'learning_rate': current_lr,
+                    'train_f1_macro': train_metrics['f1_macro'],
+                    'val_f1_macro': val_metrics['f1_macro'],
+                    'train_accuracy': train_metrics['accuracy'],
+                    'val_accuracy': val_metrics['accuracy'],
+                })
+                logger.info(f"Logged to wandb: val_f1_weighted = {val_f1_weighted}")
+            except Exception as e:
+                logger.error(f"Failed to log to wandb: {e}")
+        
         # Save best model
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]
@@ -386,6 +453,16 @@ def train_model(config: Config) -> Path:
         if early_stopping(val_metrics["loss"], model):
             logger.info(f"Early stopping triggered after {epoch} epochs")
             break
+    
+    # Log final metric for wandb sweep optimization
+    if is_wandb_run:
+        try:
+            # Use the best validation F1 score as the final metric
+            final_val_f1 = best_val_f1
+            wandb.log({'val_f1_weighted': final_val_f1})
+            logger.info(f"Final val_f1_weighted logged to wandb: {final_val_f1}")
+        except Exception as e:
+            logger.error(f"Failed to log final metric to wandb: {e}")
     
     # Save final model
     final_model_path = os.path.join(config.models_dir, "final_model.pth")

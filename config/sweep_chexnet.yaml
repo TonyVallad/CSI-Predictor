@@ -77,6 +77,6 @@ early_terminate:
 command:
   - python
   - -m
-  - src.optimization.wandb_sweep
-  - --sweep-id
-  - ${SWEEP_ID} 
+  - src.cli.main
+  - --mode
+  - train 

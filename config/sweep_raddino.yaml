@@ -76,8 +76,7 @@ early_terminate:
 # Command to run for each sweep trial
 command:
   - python
-  - main.py
+  - -m
+  - src.cli.main
   - --mode
-  - train
-  - --config
-  - config.ini 
+  - train 
