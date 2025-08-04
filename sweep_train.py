@@ -6,11 +6,10 @@ This script is designed to be called by wandb sweep agent.
 
 import os
 import sys
-import wandb
 from pathlib import Path
-from dataclasses import replace
 
-# Disable legacy service and improve stability
+# Set environment variables BEFORE importing wandb
+# This prevents wandb from creating folders in the project root
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
 os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
@@ -19,6 +18,10 @@ os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from src.config import cfg, get_config
+
+# Now import wandb after setting environment variables
+import wandb
+from dataclasses import replace
 from src.training.trainer import train_model
 
 def main():
@@ -40,8 +43,11 @@ def main():
     
     # Initialize wandb - this is crucial for sweep functionality
     # Note: wandb will create a 'wandb' subfolder inside our specified directory
-    # This is normal behavior, so our files will be in /path/to/wandb/wandb/
-    with wandb.init(dir=base_config.wandb_dir) as run:
+    # To avoid nested folders, we specify the parent directory
+    wandb_parent_dir = os.path.dirname(base_config.wandb_dir)
+    print(f"Wandb parent directory: {wandb_parent_dir}")
+    
+    with wandb.init(dir=wandb_parent_dir) as run:
         print(f"Wandb run initialized: {run.id}")
         print(f"Wandb config: {dict(run.config)}")
         print(f"Wandb directory: {base_config.wandb_dir}")

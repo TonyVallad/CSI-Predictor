@@ -1,35 +1,38 @@
 """
-Main training logic for CSI-Predictor.
+Training Module for CSI-Predictor
 
-This module contains the main training functionality extracted from the original src/train.py file.
+This module contains the main training loop and related functions.
 """
 
 import os
+import math
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from typing import Dict, Any, Tuple, Optional
 import numpy as np
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
-from tqdm import tqdm
-import wandb
-import pandas as pd
-import math
 
-from src.config import Config, cfg
-from src.data.dataloader import create_data_loaders
-from src.data.preprocessing import load_csv_data, convert_nans_to_unknown
-from src.models.factory import build_model
-from src.utils.seed import seed_everything
-from src.utils.logging import logger
-from src.utils.file_utils import create_dirs, save_training_history
-from src.evaluation.visualization.plots import plot_training_curves
-from src.utils.checkpoint import save_checkpoint
-from src.utils.discord_notifier import send_training_notification
+# Set environment variables BEFORE importing wandb
+# This prevents wandb from creating folders in the project root
+os.environ['WANDB_SILENT'] = 'true'
+os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
+os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
+
+# Now import wandb after setting environment variables
+import wandb
+
+from ..config import Config
+from ..data.dataloader import create_data_loaders
+from ..data.preprocessing import load_csv_data, convert_nans_to_unknown
+from ..models.factory import build_model
+from ..utils.seed import seed_everything
+from ..utils.logging import logger
+from ..utils.file_utils import create_dirs, save_training_history
+from ..evaluation.visualization.plots import plot_training_curves
+from ..utils.checkpoint import save_checkpoint
+from ..utils.discord_notifier import send_training_notification
 from .loss import WeightedCSILoss
-from .metrics import compute_f1_metrics, compute_precision_recall, compute_csi_average_metrics, compute_ahf_classification_metrics
-from .optimizer import create_optimizer, create_scheduler
+from .metrics import compute_f1_metrics, compute_f1_metrics_with_unknown
 from .callbacks import EarlyStopping, MetricsTracker
 
 def set_random_seeds(seed: int = 42) -> None:

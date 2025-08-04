@@ -4,12 +4,15 @@ Very simple test script to verify wandb sweep functionality.
 """
 
 import os
-import wandb
 
-# Disable legacy service
+# Set environment variables BEFORE importing wandb
+# This prevents wandb from creating folders in the project root
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
 os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
+
+# Now import wandb after setting environment variables
+import wandb
 
 def main():
     """Simple test function that just logs a metric."""

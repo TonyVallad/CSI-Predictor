@@ -48,9 +48,8 @@ def setup_logging(log_dir: str = "./logs", log_level: str = "INFO") -> None:
     _logging_setup = True
     logger.info(f"Logging setup complete. Log files will be stored in: {log_dir}")
 
-# Setup basic logging on import (fallback)
-if not _logging_setup:
-    setup_logging()
+# Don't setup logging automatically - let the config system handle it
+# This prevents creating a logs folder in the project root
 
 __version__ = "1.0.0"
 __author__ = "CSI-Predictor Team" 

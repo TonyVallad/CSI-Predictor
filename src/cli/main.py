@@ -9,6 +9,15 @@ import os
 import sys
 from pathlib import Path
 
+# Set environment variables BEFORE importing wandb
+# This prevents wandb from creating folders in the project root
+os.environ['WANDB_SILENT'] = 'true'
+os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
+os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
+
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -18,6 +27,8 @@ from src.evaluation.evaluator import evaluate_model
 from .train import train_cli
 from .evaluate import evaluate_cli
 from .optimize import optimize_cli
+
+import wandb
 
 def main():
     """Main function to run training, evaluation, and/or hyperparameter optimization."""
@@ -76,13 +87,6 @@ def main():
         optimize_cli(args, mode="sweep-agent")
     elif args.mode == "sweep-train":
         # Special mode for wandb sweep training - following best practices
-        import wandb
-        import os
-        
-        # Set wandb environment variables for better stability
-        os.environ['WANDB_SILENT'] = 'true'
-        os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
-        os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
         
         # Set wandb directory environment variable globally
         # This prevents wandb from creating a .wandb folder in the current directory
@@ -94,9 +98,12 @@ def main():
         if wandb.run is None:
             logger.info("Initializing wandb run...")
             try:
-                wandb.init(dir=cfg.wandb_dir)
+                # To avoid nested folders, specify the parent directory
+                wandb_parent_dir = os.path.dirname(cfg.wandb_dir)
+                wandb.init(dir=wandb_parent_dir)
                 logger.info(f"Wandb run initialized with ID: {wandb.run.id}")
                 logger.info(f"Wandb directory: {cfg.wandb_dir}")
+                logger.info(f"Wandb parent directory: {wandb_parent_dir}")
             except Exception as e:
                 logger.error(f"Failed to initialize wandb: {e}")
                 raise

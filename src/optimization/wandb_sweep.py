@@ -1,29 +1,42 @@
 """
-Weights & Biases sweep integration for CSI-Predictor.
+W&B Sweep Configuration and Management
 
 This module contains W&B sweep functionality extracted from the original src/wandb_sweep.py file.
 """
 
 import os
+import sys
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+# Set environment variables BEFORE importing wandb
+# This prevents wandb from creating folders in the project root
+os.environ['WANDB_SILENT'] = 'true'
+os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
+os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
+
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from src.config import Config, get_config
+from src.utils.logging import logger
+
+# Now import wandb after setting environment variables
+import wandb
+
 import tempfile
 from datetime import datetime
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import wandb
 
-from ..config import Config, get_config
-from ..data.dataloader import create_data_loaders
-from ..models.factory import build_model
-from ..training.loss import WeightedCSILoss
-from ..training.trainer import train_epoch, validate_epoch
-from ..training.callbacks import EarlyStopping, MetricsTracker
-from ..utils.logging import logger
-from ..utils.seed import seed_everything
+from src.data.dataloader import create_data_loaders
+from src.models.factory import build_model
+from src.training.loss import WeightedCSILoss
+from src.training.trainer import train_epoch, validate_epoch
+from src.training.callbacks import EarlyStopping, MetricsTracker
+from src.utils.seed import seed_everything
 
 # Global cache for data loaders to avoid re-caching images for every trial
 _GLOBAL_DATA_CACHE = {}
@@ -163,11 +176,6 @@ def train_sweep_run_enhanced(config: Config, wandb_config: Dict[str, Any]) -> No
     import wandb
     import os
     
-    # Set wandb environment variables for stability
-    os.environ['WANDB_SILENT'] = 'true'
-    os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
-    os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
-    
     # Set wandb directory environment variable globally
     # This prevents wandb from creating a .wandb folder in the current directory
     os.environ['WANDB_DIR'] = config.wandb_dir
@@ -178,9 +186,12 @@ def train_sweep_run_enhanced(config: Config, wandb_config: Dict[str, Any]) -> No
     if wandb.run is None:
         logger.info("Initializing wandb run for sweep...")
         try:
-            wandb.init(dir=config.wandb_dir)
+            # To avoid nested folders, specify the parent directory
+            wandb_parent_dir = os.path.dirname(config.wandb_dir)
+            wandb.init(dir=wandb_parent_dir)
             logger.info(f"Wandb run initialized with ID: {wandb.run.id}")
             logger.info(f"Wandb directory: {config.wandb_dir}")
+            logger.info(f"Wandb parent directory: {wandb_parent_dir}")
         except Exception as e:
             logger.error(f"Failed to initialize wandb: {e}")
             raise
