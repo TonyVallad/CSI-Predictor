@@ -9,6 +9,7 @@ import pandas as pd
 from typing import Dict, Any, Optional
 from ..evaluation.metrics.f1_score import compute_enhanced_f1_metrics
 from ..evaluation.metrics.classification import compute_precision_recall_metrics
+from ..utils.logging import logger
 
 def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict[str, float]:
     """
