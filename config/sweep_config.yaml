@@ -62,4 +62,4 @@ command:
   - -m
   - src.cli.main
   - --mode
-  - train 
+  - sweep-train 

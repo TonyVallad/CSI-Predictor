@@ -22,8 +22,8 @@ from .optimize import optimize_cli
 def main():
     """Main function to run training, evaluation, and/or hyperparameter optimization."""
     parser = argparse.ArgumentParser(description="CSI-Predictor: Predict 6-zone CSI scores on chest X-rays")
-    parser.add_argument("--mode", choices=["train", "eval", "both", "hyperopt", "train-optimized", "sweep", "sweep-agent"], default="both",
-                        help="Run mode: train, eval, both, hyperopt (Optuna), train-optimized, sweep (W&B Sweeps), or sweep-agent")
+    parser.add_argument("--mode", choices=["train", "eval", "both", "hyperopt", "train-optimized", "sweep", "sweep-agent", "sweep-train"], default="both",
+                        help="Run mode: train, eval, both, hyperopt (Optuna), train-optimized, sweep (W&B Sweeps), sweep-agent, or sweep-train")
     parser.add_argument("--config", help="Path to config.ini file (if not provided, will use INI_DIR from .env)")
     parser.add_argument("--env", default=".env", help="Path to .env file")
     
@@ -74,6 +74,41 @@ def main():
         optimize_cli(args, mode="sweep")
     elif args.mode == "sweep-agent":
         optimize_cli(args, mode="sweep-agent")
+    elif args.mode == "sweep-train":
+        # Special mode for wandb sweep training
+        import wandb
+        logger.info("Starting wandb sweep training...")
+        
+        # Initialize wandb if not already initialized
+        if wandb.run is None:
+            logger.info("Initializing wandb run...")
+            wandb.init()
+        
+        # Get hyperparameters from wandb config
+        if hasattr(wandb.config, 'learning_rate'):
+            cfg.learning_rate = wandb.config.learning_rate
+        if hasattr(wandb.config, 'batch_size'):
+            cfg.batch_size = wandb.config.batch_size
+        if hasattr(wandb.config, 'optimizer'):
+            cfg.optimizer = wandb.config.optimizer
+        if hasattr(wandb.config, 'weight_decay'):
+            cfg.weight_decay = wandb.config.weight_decay
+        if hasattr(wandb.config, 'dropout_rate'):
+            cfg.dropout_rate = wandb.config.dropout_rate
+        if hasattr(wandb.config, 'model_arch'):
+            cfg.model_arch = wandb.config.model_arch
+        if hasattr(wandb.config, 'normalization_strategy'):
+            cfg.normalization_strategy = wandb.config.normalization_strategy
+        if hasattr(wandb.config, 'patience'):
+            cfg.patience = wandb.config.patience
+        if hasattr(wandb.config, 'use_official_processor'):
+            cfg.use_official_processor = wandb.config.use_official_processor
+        
+        logger.info(f"Wandb config: {dict(wandb.config)}")
+        
+        # Run training
+        train_model(cfg)
+        logger.info("Wandb sweep training completed.")
     elif args.mode in ["train", "both"]:
         train_cli(args)
     elif args.mode == "eval":

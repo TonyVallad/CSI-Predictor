@@ -420,7 +420,7 @@ def train_model(config: Config) -> Path:
                 if torch.isnan(torch.tensor(train_f1_weighted)) or torch.isinf(torch.tensor(train_f1_weighted)):
                     train_f1_weighted = 0.0
                 
-                wandb.log({
+                log_dict = {
                     'epoch': epoch,
                     'train_loss': train_metrics['loss'],
                     'train_f1_weighted': train_f1_weighted,
@@ -431,10 +431,16 @@ def train_model(config: Config) -> Path:
                     'val_f1_macro': val_metrics['f1_macro'],
                     'train_accuracy': train_metrics['accuracy'],
                     'val_accuracy': val_metrics['accuracy'],
-                })
-                logger.info(f"Logged to wandb: val_f1_weighted = {val_f1_weighted}")
+                }
+                
+                wandb.log(log_dict)
+                logger.info(f"Successfully logged to wandb: val_f1_weighted = {val_f1_weighted}")
+                logger.info(f"Wandb run ID: {wandb.run.id}")
             except Exception as e:
                 logger.error(f"Failed to log to wandb: {e}")
+                logger.error(f"Log dict: {log_dict}")
+        else:
+            logger.info("Not in wandb context - skipping wandb logging")
         
         # Save best model
         if val_metrics["loss"] < best_val_loss:
@@ -461,8 +467,12 @@ def train_model(config: Config) -> Path:
             final_val_f1 = best_val_f1
             wandb.log({'val_f1_weighted': final_val_f1})
             logger.info(f"Final val_f1_weighted logged to wandb: {final_val_f1}")
+            logger.info(f"Wandb run ID: {wandb.run.id}")
+            logger.info("Sweep run completed successfully!")
         except Exception as e:
             logger.error(f"Failed to log final metric to wandb: {e}")
+    else:
+        logger.info("Not in wandb context - skipping final metric logging")
     
     # Save final model
     final_model_path = os.path.join(config.models_dir, "final_model.pth")
