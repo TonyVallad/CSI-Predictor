@@ -8,6 +8,7 @@ import wandb
 from typing import Dict, Any
 from src.utils.logging import logger
 from src.config import Config
+import os
 
 def log_evaluation_results(evaluation_results: Dict[str, Any], config: Config, run_name: str = None) -> None:
     """
@@ -19,6 +20,10 @@ def log_evaluation_results(evaluation_results: Dict[str, Any], config: Config, r
         run_name: Optional name for the wandb run
     """
     try:
+        # Set wandb directory environment variable globally
+        # This prevents wandb from creating a .wandb folder in the current directory
+        os.environ['WANDB_DIR'] = config.wandb_dir
+        
         # Initialize wandb if not already running
         if wandb.run is None:
             wandb.init(

@@ -1,33 +1,37 @@
 #!/usr/bin/env python3
 """
-Simple test script to verify wandb sweep functionality.
+Very simple test script to verify wandb sweep functionality.
 """
 
 import os
-import sys
 import wandb
-from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Disable legacy service
+os.environ['WANDB_SILENT'] = 'true'
+os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
+os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
 
-def test_sweep_function():
-    """Test function that logs the metric the sweep is optimizing."""
+def main():
+    """Simple test function that just logs a metric."""
     
-    # Initialize wandb
-    with wandb.init() as run:
+    # Initialize wandb with a specific directory
+    with wandb.init(dir="./wandb_test") as run:
         print(f"Wandb run initialized: {run.id}")
         print(f"Wandb config: {dict(run.config)}")
         
-        # Simulate training and compute a fake metric
-        # This should match the metric name in the sweep config
-        fake_val_f1_weighted = 0.5  # Simulate a metric value
+        # Simulate a metric value based on hyperparameters
+        # This makes the test more realistic
+        learning_rate = run.config.get('learning_rate', 0.001)
+        batch_size = run.config.get('batch_size', 32)
+        
+        # Create a fake metric that depends on the hyperparameters
+        metric_value = 0.5 + (learning_rate * 100) + (batch_size / 1000)
         
         # Log the metric that the sweep is optimizing
-        wandb.log({'val_f1_weighted': fake_val_f1_weighted})
+        wandb.log({'val_f1_weighted': metric_value})
         
-        print(f"Logged val_f1_weighted: {fake_val_f1_weighted}")
+        print(f"Logged val_f1_weighted: {metric_value}")
         print("Test completed successfully!")
 
 if __name__ == "__main__":
-    test_sweep_function() 
+    main() 

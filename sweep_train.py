@@ -29,10 +29,18 @@ def main():
     # Get the base configuration
     base_config = get_config()
     
-    # Set wandb directory environment variable
+    # Set wandb directory environment variable globally
+    # This prevents wandb from creating a .wandb folder in the current directory
     os.environ['WANDB_DIR'] = base_config.wandb_dir
     
+    # Ensure the wandb directory exists
+    os.makedirs(base_config.wandb_dir, exist_ok=True)
+    
+    print(f"Using wandb directory: {base_config.wandb_dir}")
+    
     # Initialize wandb - this is crucial for sweep functionality
+    # Note: wandb will create a 'wandb' subfolder inside our specified directory
+    # This is normal behavior, so our files will be in /path/to/wandb/wandb/
     with wandb.init(dir=base_config.wandb_dir) as run:
         print(f"Wandb run initialized: {run.id}")
         print(f"Wandb config: {dict(run.config)}")

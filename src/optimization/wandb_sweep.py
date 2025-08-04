@@ -166,6 +166,11 @@ def train_sweep_run_enhanced(config: Config, wandb_config: Dict[str, Any]) -> No
     # Set wandb environment variables for stability
     os.environ['WANDB_SILENT'] = 'true'
     os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
+    os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
+    
+    # Set wandb directory environment variable globally
+    # This prevents wandb from creating a .wandb folder in the current directory
+    os.environ['WANDB_DIR'] = config.wandb_dir
     
     logger.info("Starting enhanced wandb sweep training...")
     

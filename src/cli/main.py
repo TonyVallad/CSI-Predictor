@@ -82,6 +82,11 @@ def main():
         # Set wandb environment variables for better stability
         os.environ['WANDB_SILENT'] = 'true'
         os.environ['WANDB_DISABLE_ARTIFACT'] = 'true'
+        os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
+        
+        # Set wandb directory environment variable globally
+        # This prevents wandb from creating a .wandb folder in the current directory
+        os.environ['WANDB_DIR'] = cfg.wandb_dir
         
         logger.info("Starting wandb sweep training...")
         
