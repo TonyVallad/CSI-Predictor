@@ -257,6 +257,7 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
     metrics_tracker = MetricsTracker()
     
     # Training loop
+    best_val_f1 = 0.0
     for epoch in range(config.n_epochs):
         # Training
         train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, epoch, csv_data, config)
@@ -270,27 +271,66 @@ def train_sweep_run(config: Config, wandb_config: Dict[str, Any]) -> None:
         elif scheduler_type == 'CosineAnnealingLR':
             scheduler.step()
         
-        # Log to W&B
-        wandb.log({
+        # Ensure we have valid metrics before logging
+        val_f1_weighted = val_metrics.get('f1_weighted_overall', 0.0)
+        train_f1_weighted = train_metrics.get('f1_weighted_overall', 0.0)
+        
+        # Check for NaN or invalid values
+        if torch.isnan(torch.tensor(val_f1_weighted)) or torch.isinf(torch.tensor(val_f1_weighted)):
+            logger.warning(f"Invalid val_f1_weighted detected: {val_f1_weighted}, using 0.0")
+            val_f1_weighted = 0.0
+        
+        if torch.isnan(torch.tensor(train_f1_weighted)) or torch.isinf(torch.tensor(train_f1_weighted)):
+            logger.warning(f"Invalid train_f1_weighted detected: {train_f1_weighted}, using 0.0")
+            train_f1_weighted = 0.0
+        
+        # Log to W&B with explicit metric names
+        log_dict = {
             'epoch': epoch,
             'train_loss': train_metrics['loss'],
-            'train_f1_weighted': train_metrics['f1_weighted_overall'],
+            'train_f1_weighted': train_f1_weighted,
             'val_loss': val_metrics['loss'],
-            'val_f1_weighted': val_metrics['f1_weighted_overall'],
+            'val_f1_weighted': val_f1_weighted,  # This is the key metric for the sweep
             'learning_rate': optimizer.param_groups[0]['lr']
+        }
+        
+        # Add additional debugging metrics
+        log_dict.update({
+            'train_f1_macro': train_metrics.get('f1_macro', 0.0),
+            'val_f1_macro': val_metrics.get('f1_macro', 0.0),
+            'train_accuracy': train_metrics.get('accuracy', 0.0),
+            'val_accuracy': val_metrics.get('accuracy', 0.0),
         })
         
+        try:
+            wandb.log(log_dict)
+            logger.info(f"Successfully logged to wandb: val_f1_weighted = {val_f1_weighted}")
+        except Exception as e:
+            logger.error(f"Failed to log to wandb: {e}")
+            logger.error(f"Log dict: {log_dict}")
+        
         # Debug logging
-        logger.info(f"Epoch {epoch}: val_f1_weighted = {val_metrics['f1_weighted_overall']}")
+        logger.info(f"Epoch {epoch}: val_f1_weighted = {val_f1_weighted}")
+        
+        # Track best validation F1
+        if val_f1_weighted > best_val_f1:
+            best_val_f1 = val_f1_weighted
         
         # Early stopping based on validation F1 score
-        if early_stopping(val_metrics['f1_weighted_overall'], model):
+        if early_stopping(val_f1_weighted, model):
             logger.info(f"Early stopping triggered at epoch {epoch}")
             break
     
-    # Log final metric for W&B sweep optimization
-    final_val_f1 = val_metrics['f1_weighted_overall']
-    wandb.log({'val_f1_weighted': final_val_f1})
+    # Log final metric for W&B sweep optimization - this is crucial for the sweep
+    final_val_f1 = best_val_f1  # Use the best validation F1 score
+    
+    # Ensure the final metric is logged with the exact name expected by the sweep
+    try:
+        wandb.log({'val_f1_weighted': final_val_f1})
+        logger.info(f"Final val_f1_weighted logged to wandb: {final_val_f1}")
+    except Exception as e:
+        logger.error(f"Failed to log final metric to wandb: {e}")
+    
     logger.info(f"Final val_f1_weighted: {final_val_f1}")
 
 def initialize_sweep(project_name: str, sweep_config: Dict[str, Any]) -> str:
@@ -317,14 +357,25 @@ def run_sweep_agent(sweep_id: str, config: Config) -> None:
         config: Configuration object
     """
     def train_function():
-        with wandb.init(dir=config.wandb_dir) as run:
-            # Get hyperparameters from W&B
-            wandb_config = wandb.config
-            
-            # Train the model
-            train_sweep_run(config, wandb_config)
+        try:
+            logger.info("Initializing wandb run for sweep...")
+            with wandb.init(dir=config.wandb_dir) as run:
+                logger.info(f"Wandb run initialized successfully: {run.id}")
+                
+                # Get hyperparameters from W&B
+                wandb_config = wandb.config
+                logger.info(f"Wandb config received: {dict(wandb_config)}")
+                
+                # Train the model
+                train_sweep_run(config, wandb_config)
+                
+                logger.info("Sweep run completed successfully")
+        except Exception as e:
+            logger.error(f"Error in sweep run: {e}")
+            raise
     
     # Run the agent
+    logger.info(f"Starting wandb agent for sweep {sweep_id}")
     wandb.agent(sweep_id, train_function, count=None)  # Run until sweep is complete
 
 def create_and_run_sweep(

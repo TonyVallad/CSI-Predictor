@@ -32,12 +32,27 @@ def compute_f1_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict
         include_per_class=False  # Skip per-class details during training for speed
     )
     
+    # Debug logging for metric computation
+    f1_weighted_overall = enhanced_metrics.get('f1_weighted_overall', 0.0)
+    f1_macro = enhanced_metrics.get('f1_macro', 0.0)
+    
+    # Check for invalid values
+    if torch.isnan(torch.tensor(f1_weighted_overall)) or torch.isinf(torch.tensor(f1_weighted_overall)):
+        logger.warning(f"Invalid f1_weighted_overall detected: {f1_weighted_overall}, using 0.0")
+        f1_weighted_overall = 0.0
+    
+    if torch.isnan(torch.tensor(f1_macro)) or torch.isinf(torch.tensor(f1_macro)):
+        logger.warning(f"Invalid f1_macro detected: {f1_macro}, using 0.0")
+        f1_macro = 0.0
+    
+    logger.debug(f"Computed metrics - f1_weighted_overall: {f1_weighted_overall}, f1_macro: {f1_macro}")
+    
     # Return key metrics with backwards compatibility
     return {
-        'f1_macro': enhanced_metrics['f1_macro'],
-        'f1_weighted_macro': enhanced_metrics['f1_weighted_macro'],
-        'f1_overall': enhanced_metrics['f1_overall'],
-        'f1_weighted_overall': enhanced_metrics['f1_weighted_overall'],  # Consistent key name
+        'f1_macro': f1_macro,
+        'f1_weighted_macro': enhanced_metrics.get('f1_weighted_macro', 0.0),
+        'f1_overall': enhanced_metrics.get('f1_overall', 0.0),
+        'f1_weighted_overall': f1_weighted_overall,  # Consistent key name
         # Keep individual zone metrics
         **{k: v for k, v in enhanced_metrics.items() if k.startswith('f1_zone_')}
     }
