@@ -14,8 +14,8 @@ os.environ['WANDB_REQUIRE_SERVICE'] = 'false'
 def main():
     """Simple test function that just logs a metric."""
     
-    # Initialize wandb
-    with wandb.init() as run:
+    # Initialize wandb with a specific directory
+    with wandb.init(dir="./wandb_test") as run:
         print(f"Wandb run initialized: {run.id}")
         print(f"Wandb config: {dict(run.config)}")
         

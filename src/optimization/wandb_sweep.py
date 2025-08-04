@@ -173,8 +173,9 @@ def train_sweep_run_enhanced(config: Config, wandb_config: Dict[str, Any]) -> No
     if wandb.run is None:
         logger.info("Initializing wandb run for sweep...")
         try:
-            wandb.init()
+            wandb.init(dir=config.wandb_dir)
             logger.info(f"Wandb run initialized with ID: {wandb.run.id}")
+            logger.info(f"Wandb directory: {config.wandb_dir}")
         except Exception as e:
             logger.error(f"Failed to initialize wandb: {e}")
             raise

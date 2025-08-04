@@ -89,8 +89,9 @@ def main():
         if wandb.run is None:
             logger.info("Initializing wandb run...")
             try:
-                wandb.init()
+                wandb.init(dir=cfg.wandb_dir)
                 logger.info(f"Wandb run initialized with ID: {wandb.run.id}")
+                logger.info(f"Wandb directory: {cfg.wandb_dir}")
             except Exception as e:
                 logger.error(f"Failed to initialize wandb: {e}")
                 raise

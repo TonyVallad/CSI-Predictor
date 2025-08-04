@@ -26,13 +26,17 @@ def main():
     Main training function for W&B sweep.
     This follows the official W&B sweep pattern.
     """
+    # Get the base configuration
+    base_config = get_config()
+    
+    # Set wandb directory environment variable
+    os.environ['WANDB_DIR'] = base_config.wandb_dir
+    
     # Initialize wandb - this is crucial for sweep functionality
-    with wandb.init() as run:
+    with wandb.init(dir=base_config.wandb_dir) as run:
         print(f"Wandb run initialized: {run.id}")
         print(f"Wandb config: {dict(run.config)}")
-        
-        # Get the base configuration
-        base_config = get_config()
+        print(f"Wandb directory: {base_config.wandb_dir}")
         
         # Create a mutable copy of the configuration with sweep hyperparameters
         config_updates = {}
