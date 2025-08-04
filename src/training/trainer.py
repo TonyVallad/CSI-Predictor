@@ -11,6 +11,10 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from typing import Dict, Any, Tuple, Optional
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
+from datetime import datetime
+from pathlib import Path
 
 # Set environment variables BEFORE importing wandb
 # This prevents wandb from creating folders in the project root
@@ -32,7 +36,7 @@ from ..evaluation.visualization.plots import plot_training_curves
 from ..utils.checkpoint import save_checkpoint
 from ..utils.discord_notifier import send_training_notification
 from .loss import WeightedCSILoss
-from .metrics import compute_f1_metrics, compute_f1_metrics_with_unknown
+from .metrics import compute_f1_metrics, compute_f1_metrics_with_unknown, compute_precision_recall, compute_csi_average_metrics, compute_ahf_classification_metrics
 from .callbacks import EarlyStopping, MetricsTracker
 
 def set_random_seeds(seed: int = 42) -> None:
