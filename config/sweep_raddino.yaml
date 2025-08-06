@@ -1,5 +1,6 @@
 # W&B Sweep Configuration for CSI-Predictor - RadDINO
 # This file defines the hyperparameter search space for RadDINO model optimization
+# Updated based on sweep analysis results to focus on high-performing regions
 
 name: "CSI-Predictor RadDINO Hyperparameter Optimization"
 program: sweep_train.py
@@ -23,46 +24,40 @@ parameters:
   batch_size:
     value: 8
   
-  # Optimizer settings
+  # Optimizer settings - removed sgd based on analysis results
   optimizer:
-    values: ['adam', 'adamw', 'sgd']
+    values: ['adam', 'adamw']
   
-  # Learning rate - RadDINO typically uses very low learning rates
+  # Learning rate - focused on high-performing range (1e-4 to 2e-4)
   learning_rate:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.0002
+  
+  # Weight decay - keeping current range but focusing on higher values
+  weight_decay:
     distribution: log_uniform_values
     min: 0.00001
     max: 0.001
   
-  # Weight decay
-  weight_decay:
-    distribution: log_uniform_values
-    min: 0.000001
-    max: 0.001
-  
-  # Dropout rate
+  # Dropout rate - focused on high-performing range (0.5 to 0.7)
   dropout_rate:
     distribution: uniform
-    min: 0.1
+    min: 0.5
     max: 0.7
   
-  # Momentum (for SGD)
-  momentum:
-    distribution: uniform
-    min: 0.8
-    max: 0.99
-  
-  # Normalization strategy
+  # Normalization strategy - keeping both based on analysis
   normalization_strategy:
     values: ['imagenet', 'medical']
   
-  # Scheduler type
+  # Scheduler type - only ReduceLROnPlateau based on analysis results
   scheduler_type:
-    values: ['ReduceLROnPlateau', 'CosineAnnealingLR']
+    value: 'ReduceLROnPlateau'
   
-  # Loss function weights for class imbalance
+  # Loss function weights for class imbalance - focused on high-performing range (0.8 to 1.0)
   unknown_weight:
     distribution: uniform
-    min: 0.1
+    min: 0.8
     max: 1.0
   
   # Early stopping patience
