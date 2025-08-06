@@ -1,5 +1,6 @@
 # W&B Sweep Configuration for CSI-Predictor - CheXNet
 # This file defines the hyperparameter search space for CheXNet model optimization
+# Updated based on sweep analysis results to focus on high-performing regions
 
 name: "CSI-Predictor CheXNet Hyperparameter Optimization"
 program: sweep_train.py
@@ -23,46 +24,40 @@ parameters:
   batch_size:
     value: 64
   
-  # Optimizer settings
+  # Optimizer settings - removed sgd based on analysis results, keeping only adamw
   optimizer:
-    values: ['adam', 'adamw', 'sgd']
+    value: 'adamw'
   
-  # Learning rate - CheXNet typically uses lower learning rates
+  # Learning rate - focused on high-performing range (1e-4 to 2e-4)
   learning_rate:
     distribution: log_uniform_values
-    min: 0.00005
-    max: 0.005
+    min: 0.0001
+    max: 0.0002
   
-  # Weight decay
+  # Weight decay - focused on higher values (1e-5 to 1e-4)
   weight_decay:
     distribution: log_uniform_values
-    min: 0.000001
-    max: 0.001
+    min: 0.00001
+    max: 0.0001
   
-  # Dropout rate
+  # Dropout rate - focused on high-performing range (0.55 to 0.70)
   dropout_rate:
     distribution: uniform
-    min: 0.1
-    max: 0.7
+    min: 0.55
+    max: 0.70
   
-  # Momentum (for SGD)
-  momentum:
-    distribution: uniform
-    min: 0.8
-    max: 0.99
-  
-  # Normalization strategy
+  # Normalization strategy - keeping both based on analysis
   normalization_strategy:
     values: ['imagenet', 'medical']
   
-  # Scheduler type
+  # Scheduler type - only CosineAnnealingLR based on analysis results
   scheduler_type:
-    values: ['ReduceLROnPlateau', 'CosineAnnealingLR']
+    value: 'CosineAnnealingLR'
   
-  # Loss function weights for class imbalance
+  # Loss function weights for class imbalance - focused on high-performing range (0.8 to 1.0)
   unknown_weight:
     distribution: uniform
-    min: 0.1
+    min: 0.8
     max: 1.0
   
   # Early stopping patience
