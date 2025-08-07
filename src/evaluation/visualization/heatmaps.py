@@ -11,6 +11,7 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib.colors import LinearSegmentedColormap
 from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 import random
@@ -32,7 +33,7 @@ from ...models.complete.csi_models import CSIModelWithZoneMasking
 # CSI zone names in order
 CSI_ZONE_NAMES = ['right_sup', 'left_sup', 'right_mid', 'left_mid', 'right_inf', 'left_inf']
 
-def create_custom_purple_red_colormap() -> plt.cm.LinearSegmentedColormap:
+def create_custom_purple_red_colormap() -> LinearSegmentedColormap:
     """
     Create a custom colormap from purple to blue to green to yellow to red.
     
@@ -47,7 +48,7 @@ def create_custom_purple_red_colormap() -> plt.cm.LinearSegmentedColormap:
         (1.0, 0.0, 0.0)   # Red
     ]
     
-    return plt.cm.LinearSegmentedColormap.from_list('custom_purple_red', colors, N=256)
+    return LinearSegmentedColormap.from_list('custom_purple_red', colors, N=256)
 
 def get_gradcam_targets(model: nn.Module, zone_idx: int) -> List[Any]:
     """
