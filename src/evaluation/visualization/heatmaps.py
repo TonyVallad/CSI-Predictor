@@ -260,7 +260,7 @@ def save_heatmap(
     epoch: Optional[int] = None
 ) -> None:
     """
-    Save heatmap image to file.
+    Save heatmap image to file with colorbar.
     
     Args:
         overlaid_image: Image with heatmap overlay
@@ -276,11 +276,23 @@ def save_heatmap(
     
     filepath = os.path.join(save_path, filename)
     
-    # Save image
-    plt.figure(figsize=(8, 8))
-    plt.imshow(overlaid_image)
-    plt.title(f"CSI Zone: {zone_name}")
-    plt.axis('off')
+    # Create figure with subplots to accommodate colorbar
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6), 
+                                   gridspec_kw={'width_ratios': [4, 1]})
+    
+    # Main image
+    im = ax1.imshow(overlaid_image)
+    ax1.set_title(f"CSI Zone: {zone_name}")
+    ax1.axis('off')
+    
+    # Colorbar
+    cbar = plt.colorbar(im, ax=ax2, fraction=0.8, pad=0.1)
+    cbar.set_label('Attention Intensity', rotation=270, labelpad=15)
+    cbar.ax.tick_params(labelsize=10)
+    
+    # Hide the second subplot (only used for colorbar positioning)
+    ax2.axis('off')
+    
     plt.tight_layout()
     plt.savefig(filepath, dpi=150, bbox_inches='tight')
     plt.close()

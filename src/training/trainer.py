@@ -456,8 +456,9 @@ def train_model(config: Config) -> Path:
         if config.heatmap_enabled and config.heatmap_generate_per_epoch:
             try:
                 heatmaps_dir = run_dir / "heatmaps"
-                from src.evaluation.visualization.heatmaps import generate_heatmaps_for_epoch
+                from ..evaluation.visualization.heatmaps import generate_heatmaps_for_epoch
                 generate_heatmaps_for_epoch(model, val_loader, str(heatmaps_dir), config, epoch)
+                logger.info(f"Generated heatmaps for epoch {epoch}")
             except Exception as e:
                 logger.error(f"Failed to generate heatmaps for epoch {epoch}: {e}")
         
