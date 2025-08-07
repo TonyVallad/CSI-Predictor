@@ -73,6 +73,14 @@ def validate_config(config: Config) -> None:
         elif len(config.custom_mean) != 3 or len(config.custom_std) != 3:
             errors.append("CUSTOM_MEAN and CUSTOM_STD must have exactly 3 values (RGB)")
     
+    # Validate heatmap configuration
+    if config.heatmap_samples_per_epoch < 1:
+        errors.append(f"Heatmap samples per epoch must be at least 1, got: {config.heatmap_samples_per_epoch}")
+    
+    valid_color_maps = ["custom_purple_red"]
+    if config.heatmap_color_map not in valid_color_maps:
+        errors.append(f"Invalid heatmap color map: {config.heatmap_color_map}. Must be one of: {valid_color_maps}")
+    
     if errors:
         raise ValueError(f"Configuration validation failed:\n" + "\n".join(f"- {error}" for error in errors))
 

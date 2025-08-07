@@ -17,6 +17,12 @@ from .plots import (
     create_summary_dashboard
 )
 
+from .heatmaps import (
+    generate_heatmaps_for_best_model,
+    generate_heatmaps_for_epoch,
+    generate_heatmaps_for_model
+)
+
 __all__ = [
     'save_confusion_matrix_graphs',
     'create_confusion_matrix_grid', 
@@ -24,7 +30,10 @@ __all__ = [
     'plot_training_curves',
     'create_roc_curves',
     'create_precision_recall_curves',
-    'create_summary_dashboard'
+    'create_summary_dashboard',
+    'generate_heatmaps_for_best_model',
+    'generate_heatmaps_for_epoch',
+    'generate_heatmaps_for_model'
 ]
 
 __version__ = "1.0.0"

@@ -126,6 +126,12 @@ class Config:
     masking_strategy: str = "attention"  # "zero" or "attention"
     attention_strength: float = 0.7
     
+    # Heatmap Generation Configuration
+    heatmap_enabled: bool = True
+    heatmap_samples_per_epoch: int = 1
+    heatmap_generate_per_epoch: bool = False
+    heatmap_color_map: str = "custom_purple_red"
+    
     # Image Format Configuration (V2.0 - NIFTI Support)
     image_format: str = "nifti"  # Image format (nifti only)
     image_extension: str = ".nii.gz"  # File extension for images

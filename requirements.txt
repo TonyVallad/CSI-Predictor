@@ -28,6 +28,7 @@ wandb>=0.12.0
 # Visualization
 matplotlib>=3.4.0
 seaborn>=0.11.0
+grad-cam>=1.4.0  # For heatmap generation
 
 # Hyperparameter optimization
 optuna>=3.0.0

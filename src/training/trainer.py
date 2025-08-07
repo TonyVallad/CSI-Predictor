@@ -452,6 +452,15 @@ def train_model(config: Config) -> Path:
             save_checkpoint(model, optimizer, epoch, val_metrics["f1_macro"], model_path, config=config)
             logger.info(f"Saved best model (F1) to {model_path}")
         
+        # Generate heatmaps for current epoch if enabled
+        if config.heatmap_enabled and config.heatmap_generate_per_epoch:
+            try:
+                heatmaps_dir = run_dir / "heatmaps"
+                from src.evaluation.visualization.heatmaps import generate_heatmaps_for_epoch
+                generate_heatmaps_for_epoch(model, val_loader, str(heatmaps_dir), config, epoch)
+            except Exception as e:
+                logger.error(f"Failed to generate heatmaps for epoch {epoch}: {e}")
+        
         # Check early stopping
         if early_stopping(val_metrics["loss"], model):
             logger.info(f"Early stopping triggered after {epoch} epochs")
@@ -547,6 +556,33 @@ def train_model(config: Config) -> Path:
         str(training_curves_dir), "training_run",
         train_precisions, val_precisions
     )
+    
+    # Generate heatmaps for best model
+    if config.heatmap_enabled:
+        try:
+            heatmaps_dir = run_dir / "heatmaps"
+            from src.evaluation.visualization.heatmaps import generate_heatmaps_for_best_model
+            
+            # Load the best model for heatmap generation
+            best_model_path = None
+            if best_val_f1 > 0:
+                # Find the best F1 model
+                for file in os.listdir(config.models_dir):
+                    if file.startswith("best_f1_model_epoch_"):
+                        best_model_path = os.path.join(config.models_dir, file)
+                        break
+            
+            if best_model_path and os.path.exists(best_model_path):
+                # Load best model
+                checkpoint = torch.load(best_model_path, map_location=device)
+                model.load_state_dict(checkpoint['model_state_dict'])
+                logger.info(f"Loaded best model from {best_model_path} for heatmap generation")
+            
+            generate_heatmaps_for_best_model(model, val_loader, str(heatmaps_dir), config)
+            logger.info(f"Heatmaps saved to: {heatmaps_dir}")
+            
+        except Exception as e:
+            logger.error(f"Failed to generate heatmaps: {e}")
     
     logger.info("Training completed successfully!")
     logger.info(f"All outputs saved to run directory: {run_dir}")
