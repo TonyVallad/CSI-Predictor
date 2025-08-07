@@ -99,8 +99,17 @@ def generate_gradcam_heatmap(
             return generate_fallback_attention_map(model, input_tensor, zone_idx)
     
     try:
-        # Initialize GradCAM
-        cam = GradCAM(model=model, target_layers=[target_layer], use_cuda=input_tensor.device.type == 'cuda')
+        # Initialize GradCAM with updated parameters for newer versions
+        device = input_tensor.device
+        if hasattr(GradCAM, '__init__'):
+            # Try newer GradCAM API
+            try:
+                cam = GradCAM(model=model, target_layers=[target_layer])
+            except TypeError:
+                # Fallback to older API
+                cam = GradCAM(model=model, target_layers=[target_layer], use_cuda=device.type == 'cuda')
+        else:
+            cam = GradCAM(model=model, target_layers=[target_layer], use_cuda=device.type == 'cuda')
         
         # Get targets for the specific zone
         targets = get_gradcam_targets(model, zone_idx)
@@ -108,6 +117,13 @@ def generate_gradcam_heatmap(
         # Generate heatmap
         grayscale_cam = cam(input_tensor=input_tensor, targets=targets)
         heatmap = grayscale_cam[0, :]  # Remove batch dimension
+        
+        # Clean up GradCAM object to prevent attribute errors
+        try:
+            if hasattr(cam, 'activations_and_grads'):
+                cam.activations_and_grads.release()
+        except:
+            pass
         
         return heatmap
         
@@ -276,22 +292,18 @@ def save_heatmap(
     
     filepath = os.path.join(save_path, filename)
     
-    # Create figure with subplots to accommodate colorbar
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6), 
-                                   gridspec_kw={'width_ratios': [4, 1]})
+    # Create figure with single subplot and colorbar positioned to the right
+    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
     
     # Main image
-    im = ax1.imshow(overlaid_image)
-    ax1.set_title(f"CSI Zone: {zone_name}")
-    ax1.axis('off')
+    im = ax.imshow(overlaid_image)
+    ax.set_title(f"CSI Zone: {zone_name}")
+    ax.axis('off')
     
-    # Colorbar
-    cbar = plt.colorbar(im, ax=ax2, fraction=0.8, pad=0.1)
+    # Add colorbar positioned to the right of the image
+    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label('Attention Intensity', rotation=270, labelpad=15)
     cbar.ax.tick_params(labelsize=10)
-    
-    # Hide the second subplot (only used for colorbar positioning)
-    ax2.axis('off')
     
     plt.tight_layout()
     plt.savefig(filepath, dpi=150, bbox_inches='tight')

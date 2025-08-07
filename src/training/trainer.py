@@ -453,14 +453,20 @@ def train_model(config: Config) -> Path:
             logger.info(f"Saved best model (F1) to {model_path}")
         
         # Generate heatmaps for current epoch if enabled
+        logger.debug(f"Heatmap config - enabled: {config.heatmap_enabled}, per_epoch: {config.heatmap_generate_per_epoch}")
         if config.heatmap_enabled and config.heatmap_generate_per_epoch:
             try:
                 heatmaps_dir = run_dir / "heatmaps"
+                logger.info(f"Starting per-epoch heatmap generation for epoch {epoch}")
                 from ..evaluation.visualization.heatmaps import generate_heatmaps_for_epoch
                 generate_heatmaps_for_epoch(model, val_loader, str(heatmaps_dir), config, epoch)
                 logger.info(f"Generated heatmaps for epoch {epoch}")
             except Exception as e:
                 logger.error(f"Failed to generate heatmaps for epoch {epoch}: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+        else:
+            logger.debug(f"Skipping per-epoch heatmap generation - enabled: {config.heatmap_enabled}, per_epoch: {config.heatmap_generate_per_epoch}")
         
         # Check early stopping
         if early_stopping(val_metrics["loss"], model):
