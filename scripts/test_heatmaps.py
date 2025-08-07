@@ -14,7 +14,7 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from src.config.config_loader import load_config
+from src.config import get_config
 from src.data.dataloader import create_data_loaders
 from src.models.factory import create_model
 from src.evaluation.visualization.heatmaps import (
@@ -31,7 +31,7 @@ def test_heatmap_generation():
     
     # Load configuration
     try:
-        test_config = load_config()
+        test_config = get_config()
         logger.info("✓ Configuration loaded successfully")
     except Exception as e:
         logger.error(f"✗ Failed to load configuration: {e}")

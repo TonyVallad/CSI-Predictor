@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Simple script to test configuration loading for heatmap settings.
+Minimal script to test configuration loading for heatmap settings.
+This script avoids complex dependencies like loguru.
 """
 
 import sys
@@ -13,13 +14,15 @@ sys.path.insert(0, str(project_root))
 
 print("Testing configuration loading...")
 print(f"Project root: {project_root}")
-print(f"Python path: {sys.path[:3]}...")  # Show first 3 entries
 
 try:
-    # Try to import and load config
-    from src.config import get_config
+    # Try to import and load config without using the logging module
+    from src.config.config import Config
+    from src.config.config_loader import ConfigLoader
     
-    config = get_config()
+    # Create a simple config loader
+    loader = ConfigLoader(".env", "config/config.ini")
+    config = loader.create_config()
     
     print("✓ Configuration loaded successfully!")
     print(f"Heatmap enabled: {config.heatmap_enabled}")
