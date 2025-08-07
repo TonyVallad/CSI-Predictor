@@ -323,8 +323,13 @@ def generate_heatmaps_for_model(
     logger.info(f"Generating heatmaps for {len(sample_indices)} samples from validation set")
     
     for sample_idx in sample_indices:
-        # Get sample
-        image, labels = val_dataset[sample_idx]
+        # Get sample (dataset returns image, labels, file_id)
+        sample_data = val_dataset[sample_idx]
+        if len(sample_data) == 3:
+            image, labels, file_id = sample_data
+        else:
+            # Fallback for older dataset formats
+            image, labels = sample_data
         
         # Add batch dimension
         input_tensor = image.unsqueeze(0).to(next(model.parameters()).device)
