@@ -14,27 +14,28 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from config import Config, cfg
-from data.dataloader import create_data_loaders
-from models.factory import build_model
-from evaluation.visualization.heatmaps import (
+from src.config.config_loader import load_config
+from src.data.dataloader import create_data_loaders
+from src.models.factory import create_model
+from src.evaluation.visualization.heatmaps import (
     generate_heatmaps_for_best_model,
     generate_heatmaps_for_epoch,
     create_custom_purple_red_colormap
 )
-from utils.logging import logger
+from src.utils.logging import logger
 
 def test_heatmap_generation():
     """Test heatmap generation functionality."""
     
     logger.info("Testing heatmap generation functionality...")
     
-    # Create a simple test configuration
-    test_config = Config()
-    test_config.heatmap_enabled = True
-    test_config.heatmap_samples_per_epoch = 1
-    test_config.heatmap_generate_per_epoch = False
-    test_config.batch_size = 1
+    # Load configuration
+    try:
+        test_config = load_config()
+        logger.info("✓ Configuration loaded successfully")
+    except Exception as e:
+        logger.error(f"✗ Failed to load configuration: {e}")
+        return False
     
     # Create data loaders
     try:
@@ -46,7 +47,7 @@ def test_heatmap_generation():
     
     # Create a simple test model
     try:
-        model = build_model(test_config)
+        model = create_model(test_config)
         logger.info("✓ Model created successfully")
     except Exception as e:
         logger.error(f"✗ Failed to create model: {e}")
